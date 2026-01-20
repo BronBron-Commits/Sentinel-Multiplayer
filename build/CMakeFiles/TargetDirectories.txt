@@ -1,0 +1,3 @@
+/home/unhidra/projects/sentinel-multiplayer/build/CMakeFiles/drone-client.dir
+/home/unhidra/projects/sentinel-multiplayer/build/CMakeFiles/edit_cache.dir
+/home/unhidra/projects/sentinel-multiplayer/build/CMakeFiles/rebuild_cache.dir
