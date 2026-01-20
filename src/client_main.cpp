@@ -191,15 +191,35 @@ int main() {
         if (k[SDL_SCANCODE_W]) ay += ACCEL;
         if (k[SDL_SCANCODE_S]) ay -= ACCEL;
 
+        float yaw_rad = yaw * 3.1415926f / 180.0f;
+
+// yaw update FIRST
+if (k[SDL_SCANCODE_A]) yaw -= YAW_SPEED * DT;
+if (k[SDL_SCANCODE_D]) yaw += YAW_SPEED * DT;
+
+
+// rotate local input into world space
+float sin_yaw = std::sin(yaw_rad);
+float cos_yaw = std::cos(yaw_rad);
+
+float world_ax = ax * cos_yaw - az * sin_yaw;
+float world_az = ax * sin_yaw + az * cos_yaw;
+
+// apply velocity
+vel_x += world_ax * DT;
+vel_y += ay * DT;
+vel_z += world_az * DT;
+
+
         // yaw control (A/D)
 
         if (k[SDL_SCANCODE_A]) yaw -= YAW_SPEED * DT;
 
         if (k[SDL_SCANCODE_D]) yaw += YAW_SPEED * DT;
 
-        vel_x += ax * DT;
+        vel_x += world_ax * DT;
         vel_y += ay * DT;
-        vel_z += az * DT;
+        vel_z += world_az * DT;
 
         vel_x *= DRAG;
         vel_y *= DRAG;
@@ -220,8 +240,7 @@ int main() {
 
         rotor_angle += 1200.0f * DT;
 
-        float yaw_rad = yaw * 3.1415926f / 180.0f;
-
+        
 // rotate camera offset around Y (drone-local space)
 float off_x = std::sin(yaw_rad) * cam_offset_z;
 float off_z = std::cos(yaw_rad) * cam_offset_z;
