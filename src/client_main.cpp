@@ -2,17 +2,33 @@
 #include <GL/gl.h>
 #include <cmath>
 
-static float drone_x = 0.0f;
-static float drone_y = 1.0f;
-static float drone_z = 0.0f;
+// -------- Drone physical state --------
+static float pos_x = 0.0f;
+static float pos_y = 1.0f;
+static float pos_z = 0.0f;
 
-// Camera offset relative to drone
+static float vel_x = 0.0f;
+static float vel_y = 0.0f;
+static float vel_z = 0.0f;
+
+// orientation (degrees)
+static float pitch = 0.0f; // forward/back
+static float roll  = 0.0f; // left/right
+
+// -------- Camera --------
 static float cam_offset_x = 0.0f;
-static float cam_offset_y = 2.8f;
-static float cam_offset_z = 7.0f;
+static float cam_offset_y = 3.0f;
+static float cam_offset_z = 8.0f;
 
-static float rotor_angle = 0.0f;
+// -------- Tuning --------
+static constexpr float ACCEL        = 6.0f;
+static constexpr float DRAG         = 0.92f;
+static constexpr float TILT_FACTOR  = 6.0f;
+static constexpr float TILT_RETURN  = 0.88f;
+static constexpr float MAX_TILT     = 25.0f;
+static constexpr float DT           = 1.0f / 60.0f;
 
+// -------- Rendering helpers --------
 void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
     float f = 1.0f / std::tan(fov_deg * 0.5f * 3.1415926f / 180.0f);
     float m[16] = {
@@ -25,81 +41,60 @@ void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
 }
 
 void draw_box(float x, float y, float z) {
-    float hx = x * 0.5f;
-    float hy = y * 0.5f;
-    float hz = z * 0.5f;
-
+    float hx = x * 0.5f, hy = y * 0.5f, hz = z * 0.5f;
     glBegin(GL_QUADS);
-    // top
     glVertex3f(-hx, hy, -hz); glVertex3f(hx, hy, -hz);
     glVertex3f(hx, hy, hz);   glVertex3f(-hx, hy, hz);
-    // bottom
     glVertex3f(-hx, -hy, hz); glVertex3f(hx, -hy, hz);
     glVertex3f(hx, -hy, -hz); glVertex3f(-hx, -hy, -hz);
-    // front
     glVertex3f(-hx, -hy, hz); glVertex3f(hx, -hy, hz);
     glVertex3f(hx, hy, hz);   glVertex3f(-hx, hy, hz);
-    // back
     glVertex3f(-hx, hy, -hz); glVertex3f(hx, hy, -hz);
     glVertex3f(hx, -hy, -hz); glVertex3f(-hx, -hy, -hz);
-    // left
     glVertex3f(-hx, -hy, -hz); glVertex3f(-hx, -hy, hz);
     glVertex3f(-hx, hy, hz);   glVertex3f(-hx, hy, -hz);
-    // right
     glVertex3f(hx, -hy, hz); glVertex3f(hx, -hy, -hz);
     glVertex3f(hx, hy, -hz); glVertex3f(hx, hy, hz);
     glEnd();
 }
 
-void draw_rotor(float radius) {
+void draw_rotor(float r) {
     glBegin(GL_TRIANGLE_FAN);
     glVertex3f(0, 0, 0);
-    for (int i = 0; i <= 20; ++i) {
-        float a = i / 20.0f * 2.0f * 3.1415926f;
-        glVertex3f(std::cos(a) * radius, 0, std::sin(a) * radius);
+    for (int i = 0; i <= 16; ++i) {
+        float a = i / 16.0f * 2.0f * 3.1415926f;
+        glVertex3f(std::cos(a) * r, 0, std::sin(a) * r);
     }
     glEnd();
 }
 
-void draw_drone() {
-    // body
-    glColor3f(0.2f, 0.2f, 0.25f);
-    draw_box(0.8f, 0.2f, 0.8f);
+void draw_drone(float rotor_angle) {
+    glColor3f(0.25f, 0.25f, 0.3f);
+    draw_box(0.9f, 0.2f, 0.9f);
 
-    // arms
-    glColor3f(0.35f, 0.35f, 0.35f);
-    draw_box(2.0f, 0.08f, 0.15f);
-    draw_box(0.15f, 0.08f, 2.0f);
+    glColor3f(0.4f, 0.4f, 0.4f);
+    draw_box(2.2f, 0.08f, 0.15f);
+    draw_box(0.15f, 0.08f, 2.2f);
 
-    // rotors
     glColor3f(0.1f, 0.1f, 0.1f);
-    const float arm = 1.0f;
-    const float h = 0.15f;
-
-    for (int sx = -1; sx <= 1; sx += 2) {
+    for (int sx = -1; sx <= 1; sx += 2)
         for (int sz = -1; sz <= 1; sz += 2) {
             glPushMatrix();
-            glTranslatef(sx * arm, h, sz * arm);
+            glTranslatef(sx * 1.1f, 0.15f, sz * 1.1f);
             glRotatef(rotor_angle, 0, 1, 0);
             draw_rotor(0.35f);
             glPopMatrix();
         }
-    }
 }
 
-void draw_grid(float half_extent, float step) {
+void draw_grid(float half, float step) {
     glBegin(GL_LINES);
-    for (float i = -half_extent; i <= half_extent; i += step) {
-        if (std::fabs(i) < 0.0001f)
-            glColor3f(0.6f, 0.6f, 0.6f);
-        else
-            glColor3f(0.25f, 0.25f, 0.25f);
-
-        glVertex3f(-half_extent, 0.0f, i);
-        glVertex3f( half_extent, 0.0f, i);
-
-        glVertex3f(i, 0.0f, -half_extent);
-        glVertex3f(i, 0.0f,  half_extent);
+    for (float i = -half; i <= half; i += step) {
+        glColor3f(std::fabs(i) < 0.001f ? 0.6f : 0.25f,
+                  std::fabs(i) < 0.001f ? 0.6f : 0.25f,
+                  std::fabs(i) < 0.001f ? 0.6f : 0.25f);
+        glVertex3f(-half, 0, i); glVertex3f(half, 0, i);
+        glVertex3f(i, 0, -half); glVertex3f(i, 0, half);
     }
     glEnd();
 }
@@ -107,58 +102,82 @@ void draw_grid(float half_extent, float step) {
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
-        "Drone Visual Client",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        1280, 720,
-        SDL_WINDOW_OPENGL
+        "Drone – Inertia & Tilt",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        1280, 720, SDL_WINDOW_OPENGL
     );
     SDL_GLContext gl = SDL_GL_CreateContext(win);
-
     glEnable(GL_DEPTH_TEST);
 
+    float rotor_angle = 0.0f;
     bool running = true;
+
     while (running) {
         SDL_Event e;
-        const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        const Uint8* k = SDL_GetKeyboardState(nullptr);
+        while (SDL_PollEvent(&e))
+            if (e.type == SDL_QUIT) running = false;
 
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT)
-                running = false;
-        }
+        // ----- INPUT → ACCELERATION -----
+        float ax = 0, ay = 0, az = 0;
+        if (k[SDL_SCANCODE_UP])    az -= ACCEL;
+        if (k[SDL_SCANCODE_DOWN])  az += ACCEL;
+        if (k[SDL_SCANCODE_LEFT])  ax -= ACCEL;
+        if (k[SDL_SCANCODE_RIGHT]) ax += ACCEL;
+        if (k[SDL_SCANCODE_EQUALS] || k[SDL_SCANCODE_KP_PLUS]) ay += ACCEL;
+        if (k[SDL_SCANCODE_MINUS]  || k[SDL_SCANCODE_KP_MINUS]) ay -= ACCEL;
 
-        // movement
-        float speed = 0.05f;
-        if (keys[SDL_SCANCODE_UP])    drone_z -= speed;
-        if (keys[SDL_SCANCODE_DOWN])  drone_z += speed;
-        if (keys[SDL_SCANCODE_LEFT])  drone_x -= speed;
-        if (keys[SDL_SCANCODE_RIGHT]) drone_x += speed;
-        if (keys[SDL_SCANCODE_EQUALS] || keys[SDL_SCANCODE_KP_PLUS])  drone_y += speed;
-        if (keys[SDL_SCANCODE_MINUS]  || keys[SDL_SCANCODE_KP_MINUS]) drone_y -= speed;
+        // ----- INTEGRATE VELOCITY -----
+        vel_x += ax * DT;
+        vel_y += ay * DT;
+        vel_z += az * DT;
 
-        rotor_angle += 25.0f;
+        vel_x *= DRAG;
+        vel_y *= DRAG;
+        vel_z *= DRAG;
 
-        float cam_x = drone_x + cam_offset_x;
-        float cam_y = drone_y + cam_offset_y;
-        float cam_z = drone_z + cam_offset_z;
+        pos_x += vel_x * DT;
+        pos_y += vel_y * DT;
+        pos_z += vel_z * DT;
+
+        // ----- TILT FROM VELOCITY -----
+        float target_pitch = -vel_z * TILT_FACTOR;
+        float target_roll  =  vel_x * TILT_FACTOR;
+
+        if (target_pitch >  MAX_TILT) target_pitch =  MAX_TILT;
+        if (target_pitch < -MAX_TILT) target_pitch = -MAX_TILT;
+        if (target_roll  >  MAX_TILT) target_roll  =  MAX_TILT;
+        if (target_roll  < -MAX_TILT) target_roll  = -MAX_TILT;
+
+        pitch = pitch * TILT_RETURN + target_pitch * (1.0f - TILT_RETURN);
+        roll  = roll  * TILT_RETURN + target_roll  * (1.0f - TILT_RETURN);
+
+        rotor_angle += 900.0f * DT;
+
+        // ----- CAMERA -----
+        float cam_x = pos_x + cam_offset_x;
+        float cam_y = pos_y + cam_offset_y;
+        float cam_z = pos_z + cam_offset_z;
 
         glViewport(0, 0, 1280, 720);
-        glClearColor(0.08f, 0.1f, 0.14f, 1.0f);
+        glClearColor(0.07f, 0.09f, 0.13f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        set_perspective(70.0f, 1280.0f / 720.0f, 0.1f, 300.0f);
+        set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 500.0f);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glTranslatef(-cam_x, -cam_y, -cam_z);
 
-        draw_grid(150.0f, 1.0f);
+        draw_grid(200.0f, 1.0f);
 
         glPushMatrix();
-        glTranslatef(drone_x, drone_y, drone_z);
-        draw_drone();
+        glTranslatef(pos_x, pos_y, pos_z);
+        glRotatef(roll,  0, 0, 1);
+        glRotatef(pitch, 1, 0, 0);
+        draw_drone(rotor_angle);
         glPopMatrix();
 
         SDL_GL_SwapWindow(win);
