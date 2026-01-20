@@ -12,20 +12,20 @@ static float vel_y = 0.0f;
 static float vel_z = 0.0f;
 
 // orientation (degrees)
-static float pitch = 0.0f; // forward/back
-static float roll  = 0.0f; // left/right
+static float pitch = 0.0f;
+static float roll  = 0.0f;
 
 // -------- Camera --------
 static float cam_offset_x = 0.0f;
-static float cam_offset_y = 3.0f;
-static float cam_offset_z = 8.0f;
+static float cam_offset_y = 3.2f;
+static float cam_offset_z = 9.0f;
 
 // -------- Tuning --------
-static constexpr float ACCEL        = 6.0f;
-static constexpr float DRAG         = 0.92f;
-static constexpr float TILT_FACTOR  = 6.0f;
-static constexpr float TILT_RETURN  = 0.88f;
-static constexpr float MAX_TILT     = 25.0f;
+static constexpr float ACCEL        = 14.0f;
+static constexpr float DRAG         = 0.90f;
+static constexpr float TILT_FACTOR  = 9.0f;
+static constexpr float TILT_RETURN  = 0.86f;
+static constexpr float MAX_TILT     = 32.0f;
 static constexpr float DT           = 1.0f / 60.0f;
 
 // -------- Rendering helpers --------
@@ -102,7 +102,7 @@ void draw_grid(float half, float step) {
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
-        "Drone – Inertia & Tilt",
+        "Drone – Correct Tilt",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         1280, 720, SDL_WINDOW_OPENGL
     );
@@ -118,7 +118,6 @@ int main() {
         while (SDL_PollEvent(&e))
             if (e.type == SDL_QUIT) running = false;
 
-        // ----- INPUT → ACCELERATION -----
         float ax = 0, ay = 0, az = 0;
         if (k[SDL_SCANCODE_UP])    az -= ACCEL;
         if (k[SDL_SCANCODE_DOWN])  az += ACCEL;
@@ -127,7 +126,6 @@ int main() {
         if (k[SDL_SCANCODE_EQUALS] || k[SDL_SCANCODE_KP_PLUS]) ay += ACCEL;
         if (k[SDL_SCANCODE_MINUS]  || k[SDL_SCANCODE_KP_MINUS]) ay -= ACCEL;
 
-        // ----- INTEGRATE VELOCITY -----
         vel_x += ax * DT;
         vel_y += ay * DT;
         vel_z += az * DT;
@@ -140,38 +138,35 @@ int main() {
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
 
-        // ----- TILT FROM VELOCITY -----
-        float target_pitch = -vel_z * TILT_FACTOR;
-        float target_roll  =  vel_x * TILT_FACTOR;
+        // ---- FIXED TILT ----
+        float target_pitch =  vel_z * TILT_FACTOR;
+        float target_roll  = -vel_x * TILT_FACTOR;
 
-        if (target_pitch >  MAX_TILT) target_pitch =  MAX_TILT;
-        if (target_pitch < -MAX_TILT) target_pitch = -MAX_TILT;
-        if (target_roll  >  MAX_TILT) target_roll  =  MAX_TILT;
-        if (target_roll  < -MAX_TILT) target_roll  = -MAX_TILT;
+        target_pitch = std::fmax(std::fmin(target_pitch,  MAX_TILT), -MAX_TILT);
+        target_roll  = std::fmax(std::fmin(target_roll,   MAX_TILT), -MAX_TILT);
 
         pitch = pitch * TILT_RETURN + target_pitch * (1.0f - TILT_RETURN);
         roll  = roll  * TILT_RETURN + target_roll  * (1.0f - TILT_RETURN);
 
-        rotor_angle += 900.0f * DT;
+        rotor_angle += 1200.0f * DT;
 
-        // ----- CAMERA -----
         float cam_x = pos_x + cam_offset_x;
         float cam_y = pos_y + cam_offset_y;
         float cam_z = pos_z + cam_offset_z;
 
         glViewport(0, 0, 1280, 720);
-        glClearColor(0.07f, 0.09f, 0.13f, 1);
+        glClearColor(0.06f, 0.08f, 0.12f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 500.0f);
+        set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 600.0f);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glTranslatef(-cam_x, -cam_y, -cam_z);
 
-        draw_grid(200.0f, 1.0f);
+        draw_grid(300.0f, 1.0f);
 
         glPushMatrix();
         glTranslatef(pos_x, pos_y, pos_z);
