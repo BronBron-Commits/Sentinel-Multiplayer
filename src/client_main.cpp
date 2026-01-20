@@ -40,6 +40,48 @@ void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
     glLoadMatrixf(m);
 }
 
+void draw_skybox(float size) {
+    glDisable(GL_DEPTH_TEST);
+    glBegin(GL_QUADS);
+
+    // Top (sky)
+    glColor3f(0.20f, 0.35f, 0.65f);
+    glVertex3f(-size, size, -size);
+    glVertex3f( size, size, -size);
+    glVertex3f( size, size,  size);
+    glVertex3f(-size, size,  size);
+
+    // Sides (horizon blend)
+    glColor3f(0.45f, 0.55f, 0.75f);
+
+    // +Z
+    glVertex3f(-size, -size, size);
+    glVertex3f( size, -size, size);
+    glVertex3f( size,  size, size);
+    glVertex3f(-size,  size, size);
+
+    // -Z
+    glVertex3f( size, -size, -size);
+    glVertex3f(-size, -size, -size);
+    glVertex3f(-size,  size, -size);
+    glVertex3f( size,  size, -size);
+
+    // +X
+    glVertex3f( size, -size,  size);
+    glVertex3f( size, -size, -size);
+    glVertex3f( size,  size, -size);
+    glVertex3f( size,  size,  size);
+
+    // -X
+    glVertex3f(-size, -size, -size);
+    glVertex3f(-size, -size,  size);
+    glVertex3f(-size,  size,  size);
+    glVertex3f(-size,  size, -size);
+
+    glEnd();
+    glEnable(GL_DEPTH_TEST);
+}
+
 void draw_box(float x, float y, float z) {
     float hx = x * 0.5f, hy = y * 0.5f, hz = z * 0.5f;
     glBegin(GL_QUADS);
@@ -102,7 +144,7 @@ void draw_grid(float half, float step) {
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
-        "Drone – W/S Vertical Thrust",
+        "Drone – Skybox",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         1280, 720, SDL_WINDOW_OPENGL
     );
@@ -118,20 +160,14 @@ int main() {
         while (SDL_PollEvent(&e))
             if (e.type == SDL_QUIT) running = false;
 
-        // -------- INPUT --------
         float ax = 0, ay = 0, az = 0;
-
-        // horizontal movement (arrows)
         if (k[SDL_SCANCODE_LEFT])  ax -= ACCEL;
         if (k[SDL_SCANCODE_RIGHT]) ax += ACCEL;
         if (k[SDL_SCANCODE_UP])    az -= ACCEL;
         if (k[SDL_SCANCODE_DOWN])  az += ACCEL;
-
-        // vertical thrust (W / S)
         if (k[SDL_SCANCODE_W]) ay += ACCEL;
         if (k[SDL_SCANCODE_S]) ay -= ACCEL;
 
-        // -------- PHYSICS --------
         vel_x += ax * DT;
         vel_y += ay * DT;
         vel_z += az * DT;
@@ -144,7 +180,6 @@ int main() {
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
 
-        // -------- TILT --------
         float target_pitch =  vel_z * TILT_FACTOR;
         float target_roll  = -vel_x * TILT_FACTOR;
 
@@ -161,18 +196,24 @@ int main() {
         float cam_z = pos_z + cam_offset_z;
 
         glViewport(0, 0, 1280, 720);
-        glClearColor(0.06f, 0.08f, 0.12f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 600.0f);
+        set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 1000.0f);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
-        glTranslatef(-cam_x, -cam_y, -cam_z);
 
-        draw_grid(300.0f, 1.0f);
+        // ---- SKYBOX ----
+        glPushMatrix();
+        glTranslatef(cam_x, cam_y, cam_z);
+        draw_skybox(500.0f);
+        glPopMatrix();
+
+        // ---- WORLD ----
+        glTranslatef(-cam_x, -cam_y, -cam_z);
+        draw_grid(400.0f, 1.0f);
 
         glPushMatrix();
         glTranslatef(pos_x, pos_y, pos_z);
