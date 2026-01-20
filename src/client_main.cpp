@@ -228,15 +228,17 @@ float cam_z = pos_z + off_z;
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
+        
         set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 1000.0f);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
+// 1. rotate camera to match drone heading
+glRotatef(-yaw, 0, 1, 0);
 
-        // rotate around the drone, not world origin
-        glTranslatef(pos_x, pos_y, pos_z);
-        glRotatef(-yaw, 0, 1, 0);
-        glTranslatef(-pos_x, -pos_y, -pos_z);
+// 2. move camera into place
+glTranslatef(-cam_x, -cam_y, -cam_z);
+
 
         glPushMatrix();
         glTranslatef(cam_x, cam_y, cam_z);
