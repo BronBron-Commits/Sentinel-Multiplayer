@@ -44,6 +44,29 @@ void draw_cube(float s) {
     glEnd();
 }
 
+void draw_grid(float half_extent, float step) {
+    glBegin(GL_LINES);
+
+    for (float i = -half_extent; i <= half_extent; i += step) {
+        if (std::fabs(i) < 0.0001f) {
+            // axis lines
+            glColor3f(0.6f, 0.6f, 0.6f);
+        } else {
+            glColor3f(0.25f, 0.25f, 0.25f);
+        }
+
+        // lines parallel to X (varying Z)
+        glVertex3f(-half_extent, 0.0f, i);
+        glVertex3f( half_extent, 0.0f, i);
+
+        // lines parallel to Z (varying X)
+        glVertex3f(i, 0.0f, -half_extent);
+        glVertex3f(i, 0.0f,  half_extent);
+    }
+
+    glEnd();
+}
+
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
@@ -88,20 +111,14 @@ int main() {
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        set_perspective(70.0f, 1280.0f / 720.0f, 0.1f, 100.0f);
+        set_perspective(70.0f, 1280.0f / 720.0f, 0.1f, 200.0f);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glTranslatef(-cam_x, -cam_y, -cam_z);
 
-        // ground
-        glColor3f(0.25f, 0.25f, 0.25f);
-        glBegin(GL_QUADS);
-        glVertex3f(-50, 0, -50);
-        glVertex3f( 50, 0, -50);
-        glVertex3f( 50, 0,  50);
-        glVertex3f(-50, 0,  50);
-        glEnd();
+        // grid floor
+        draw_grid(100.0f, 1.0f);
 
         // drone
         glPushMatrix();
