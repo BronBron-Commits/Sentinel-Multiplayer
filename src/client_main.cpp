@@ -40,6 +40,8 @@ void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
     glLoadMatrixf(m);
 }
 
+static void draw_terrain(float radius, float step);
+
 // -------- SUNSET SKYBOX --------
 void draw_skybox(float s) {
     glDisable(GL_DEPTH_TEST);
@@ -222,7 +224,7 @@ int main() {
         glPopMatrix();
 
         glTranslatef(-cam_x, -cam_y, -cam_z);
-        draw_grid(400.0f, 1.0f);
+        draw_terrain(500.0f, 4.0f);
 
         glPushMatrix();
         glTranslatef(pos_x, pos_y, pos_z);
@@ -237,4 +239,35 @@ int main() {
 
     SDL_Quit();
     return 0;
+}
+
+// -------- Procedural Terrain --------
+static float terrain_noise(float x, float z) {
+    return std::sin(x * 0.08f) * std::cos(z * 0.08f);
+}
+
+static float terrain_height(float x, float z) {
+    float h = 0.0f;
+    h += terrain_noise(x, z) * 3.0f;
+    h += terrain_noise(x * 0.5f, z * 0.5f) * 6.0f;
+    return h;
+}
+
+static void draw_terrain(float radius, float step) {
+    for (float z = -radius; z < radius; z += step) {
+        glBegin(GL_TRIANGLE_STRIP);
+        for (float x = -radius; x <= radius; x += step) {
+            float h1 = terrain_height(x, z);
+            float h2 = terrain_height(x, z + step);
+
+            float c = (h1 + 10.0f) / 20.0f;
+            if (c < 0.3f)      glColor3f(0.75f, 0.65f, 0.45f); // sand
+            else if (c < 0.6f) glColor3f(0.25f, 0.55f, 0.30f); // grass
+            else               glColor3f(0.45f, 0.45f, 0.45f); // rock
+
+            glVertex3f(x, h1, z);
+            glVertex3f(x, h2, z + step);
+        }
+        glEnd();
+    }
 }
