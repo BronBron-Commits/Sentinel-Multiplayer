@@ -4,6 +4,18 @@ project(sentinel_multiplayer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2 REQUIRED sdl2)
+
 add_executable(drone-client
     src/client_main.cpp
+)
+
+target_include_directories(drone-client PRIVATE
+    ${SDL2_INCLUDE_DIRS}
+)
+
+target_link_libraries(drone-client
+    ${SDL2_LIBRARIES}
+    GL
 )
