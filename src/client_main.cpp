@@ -14,6 +14,7 @@ static float vel_z = 0.0f;
 // orientation (degrees)
 static float pitch = 0.0f;
 static float roll  = 0.0f;
+static float yaw   = 0.0f; // heading (deg)
 
 // -------- Camera --------
 static float cam_offset_x = 0.0f;
@@ -27,6 +28,7 @@ static constexpr float TILT_FACTOR  = 9.0f;
 static constexpr float TILT_RETURN  = 0.86f;
 static constexpr float MAX_TILT     = 32.0f;
 static constexpr float DT           = 1.0f / 60.0f;
+static constexpr float YAW_SPEED = 90.0f; // deg/sec
 
 // -------- Rendering helpers --------
 void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
@@ -181,6 +183,12 @@ int main() {
         if (k[SDL_SCANCODE_W]) ay += ACCEL;
         if (k[SDL_SCANCODE_S]) ay -= ACCEL;
 
+        // yaw control (A/D)
+
+        if (k[SDL_SCANCODE_A]) yaw -= YAW_SPEED * DT;
+
+        if (k[SDL_SCANCODE_D]) yaw += YAW_SPEED * DT;
+
         vel_x += ax * DT;
         vel_y += ay * DT;
         vel_z += az * DT;
@@ -228,6 +236,7 @@ int main() {
 
         glPushMatrix();
         glTranslatef(pos_x, pos_y, pos_z);
+        glRotatef(yaw, 0, 1, 0);
         glRotatef(roll,  0, 0, 1);
         glRotatef(pitch, 1, 0, 0);
         draw_drone(rotor_angle);
