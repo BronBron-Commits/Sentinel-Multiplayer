@@ -1,0 +1,1 @@
+/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/drone-client.dir/link.d "CMakeFiles/drone-client.dir/src/client_main.cpp.o" -o drone-client  -lSDL2 -lGL

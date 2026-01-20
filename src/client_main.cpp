@@ -246,6 +246,7 @@ float cam_z = pos_z + off_z;
         glTranslatef(-cam_x, -cam_y, -cam_z);
         draw_terrain(500.0f, 4.0f);
 
+        draw_grid(200.0f, 5.0f);
 
         glPushMatrix();
         glTranslatef(pos_x, pos_y, pos_z);
