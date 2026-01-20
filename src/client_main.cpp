@@ -40,43 +40,54 @@ void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
     glLoadMatrixf(m);
 }
 
-void draw_skybox(float size) {
+// -------- SUNSET SKYBOX --------
+void draw_skybox(float s) {
     glDisable(GL_DEPTH_TEST);
     glBegin(GL_QUADS);
 
-    // Top (sky)
-    glColor3f(0.20f, 0.35f, 0.65f);
-    glVertex3f(-size, size, -size);
-    glVertex3f( size, size, -size);
-    glVertex3f( size, size,  size);
-    glVertex3f(-size, size,  size);
+    // Colors
+    const float top_r = 0.12f, top_g = 0.10f, top_b = 0.30f;   // deep blue/purple
+    const float mid_r = 0.45f, mid_g = 0.25f, mid_b = 0.45f;  // violet
+    const float hor_r = 0.95f, hor_g = 0.45f, hor_b = 0.20f;  // orange sunset
 
-    // Sides (horizon blend)
-    glColor3f(0.45f, 0.55f, 0.75f);
+    // Top
+    glColor3f(top_r, top_g, top_b);
+    glVertex3f(-s, s, -s);
+    glVertex3f( s, s, -s);
+    glVertex3f( s, s,  s);
+    glVertex3f(-s, s,  s);
 
     // +Z
-    glVertex3f(-size, -size, size);
-    glVertex3f( size, -size, size);
-    glVertex3f( size,  size, size);
-    glVertex3f(-size,  size, size);
+    glColor3f(hor_r, hor_g, hor_b);
+    glVertex3f(-s, -s,  s);
+    glVertex3f( s, -s,  s);
+    glColor3f(mid_r, mid_g, mid_b);
+    glVertex3f( s,  s,  s);
+    glVertex3f(-s,  s,  s);
 
     // -Z
-    glVertex3f( size, -size, -size);
-    glVertex3f(-size, -size, -size);
-    glVertex3f(-size,  size, -size);
-    glVertex3f( size,  size, -size);
+    glColor3f(hor_r, hor_g, hor_b);
+    glVertex3f( s, -s, -s);
+    glVertex3f(-s, -s, -s);
+    glColor3f(mid_r, mid_g, mid_b);
+    glVertex3f(-s,  s, -s);
+    glVertex3f( s,  s, -s);
 
     // +X
-    glVertex3f( size, -size,  size);
-    glVertex3f( size, -size, -size);
-    glVertex3f( size,  size, -size);
-    glVertex3f( size,  size,  size);
+    glColor3f(hor_r, hor_g, hor_b);
+    glVertex3f( s, -s,  s);
+    glVertex3f( s, -s, -s);
+    glColor3f(mid_r, mid_g, mid_b);
+    glVertex3f( s,  s, -s);
+    glVertex3f( s,  s,  s);
 
     // -X
-    glVertex3f(-size, -size, -size);
-    glVertex3f(-size, -size,  size);
-    glVertex3f(-size,  size,  size);
-    glVertex3f(-size,  size, -size);
+    glColor3f(hor_r, hor_g, hor_b);
+    glVertex3f(-s, -s, -s);
+    glVertex3f(-s, -s,  s);
+    glColor3f(mid_r, mid_g, mid_b);
+    glVertex3f(-s,  s,  s);
+    glVertex3f(-s,  s, -s);
 
     glEnd();
     glEnable(GL_DEPTH_TEST);
@@ -111,10 +122,10 @@ void draw_rotor(float r) {
 }
 
 void draw_drone(float rotor_angle) {
-    glColor3f(0.25f, 0.25f, 0.3f);
+    glColor3f(0.22f, 0.22f, 0.28f);
     draw_box(0.9f, 0.2f, 0.9f);
 
-    glColor3f(0.4f, 0.4f, 0.4f);
+    glColor3f(0.45f, 0.45f, 0.45f);
     draw_box(2.2f, 0.08f, 0.15f);
     draw_box(0.15f, 0.08f, 2.2f);
 
@@ -144,7 +155,7 @@ void draw_grid(float half, float step) {
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
-        "Drone – Skybox",
+        "Drone – Sunset Sky",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         1280, 720, SDL_WINDOW_OPENGL
     );
@@ -205,13 +216,11 @@ int main() {
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
-        // ---- SKYBOX ----
         glPushMatrix();
         glTranslatef(cam_x, cam_y, cam_z);
-        draw_skybox(500.0f);
+        draw_skybox(600.0f);
         glPopMatrix();
 
-        // ---- WORLD ----
         glTranslatef(-cam_x, -cam_y, -cam_z);
         draw_grid(400.0f, 1.0f);
 
