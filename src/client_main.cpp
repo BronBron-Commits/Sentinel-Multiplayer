@@ -226,6 +226,8 @@ int main() {
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
+        glRotatef(-yaw, 0, 1, 0);
+
         glPushMatrix();
         glTranslatef(cam_x, cam_y, cam_z);
         draw_skybox(600.0f);
