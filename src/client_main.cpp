@@ -102,7 +102,7 @@ void draw_grid(float half, float step) {
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
-        "Drone – Correct Tilt",
+        "Drone – W/S Vertical Thrust",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         1280, 720, SDL_WINDOW_OPENGL
     );
@@ -118,14 +118,20 @@ int main() {
         while (SDL_PollEvent(&e))
             if (e.type == SDL_QUIT) running = false;
 
+        // -------- INPUT --------
         float ax = 0, ay = 0, az = 0;
-        if (k[SDL_SCANCODE_UP])    az -= ACCEL;
-        if (k[SDL_SCANCODE_DOWN])  az += ACCEL;
+
+        // horizontal movement (arrows)
         if (k[SDL_SCANCODE_LEFT])  ax -= ACCEL;
         if (k[SDL_SCANCODE_RIGHT]) ax += ACCEL;
-        if (k[SDL_SCANCODE_EQUALS] || k[SDL_SCANCODE_KP_PLUS]) ay += ACCEL;
-        if (k[SDL_SCANCODE_MINUS]  || k[SDL_SCANCODE_KP_MINUS]) ay -= ACCEL;
+        if (k[SDL_SCANCODE_UP])    az -= ACCEL;
+        if (k[SDL_SCANCODE_DOWN])  az += ACCEL;
 
+        // vertical thrust (W / S)
+        if (k[SDL_SCANCODE_W]) ay += ACCEL;
+        if (k[SDL_SCANCODE_S]) ay -= ACCEL;
+
+        // -------- PHYSICS --------
         vel_x += ax * DT;
         vel_y += ay * DT;
         vel_z += az * DT;
@@ -138,12 +144,12 @@ int main() {
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
 
-        // ---- FIXED TILT ----
+        // -------- TILT --------
         float target_pitch =  vel_z * TILT_FACTOR;
         float target_roll  = -vel_x * TILT_FACTOR;
 
-        target_pitch = std::fmax(std::fmin(target_pitch,  MAX_TILT), -MAX_TILT);
-        target_roll  = std::fmax(std::fmin(target_roll,   MAX_TILT), -MAX_TILT);
+        target_pitch = std::fmax(std::fmin(target_pitch, MAX_TILT), -MAX_TILT);
+        target_roll  = std::fmax(std::fmin(target_roll,  MAX_TILT), -MAX_TILT);
 
         pitch = pitch * TILT_RETURN + target_pitch * (1.0f - TILT_RETURN);
         roll  = roll  * TILT_RETURN + target_roll  * (1.0f - TILT_RETURN);
