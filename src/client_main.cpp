@@ -212,9 +212,16 @@ int main() {
 
         rotor_angle += 1200.0f * DT;
 
-        float cam_x = pos_x + cam_offset_x;
-        float cam_y = pos_y + cam_offset_y;
-        float cam_z = pos_z + cam_offset_z;
+        float yaw_rad = yaw * 3.1415926f / 180.0f;
+
+// rotate camera offset around Y (drone-local space)
+float off_x = std::sin(yaw_rad) * cam_offset_z;
+float off_z = std::cos(yaw_rad) * cam_offset_z;
+
+float cam_x = pos_x + off_x;
+float cam_y = pos_y + cam_offset_y;
+float cam_z = pos_z + off_z;
+
 
         glViewport(0, 0, 1280, 720);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -226,7 +233,10 @@ int main() {
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
+        // rotate around the drone, not world origin
+        glTranslatef(pos_x, pos_y, pos_z);
         glRotatef(-yaw, 0, 1, 0);
+        glTranslatef(-pos_x, -pos_y, -pos_z);
 
         glPushMatrix();
         glTranslatef(cam_x, cam_y, cam_z);
@@ -235,6 +245,7 @@ int main() {
 
         glTranslatef(-cam_x, -cam_y, -cam_z);
         draw_terrain(500.0f, 4.0f);
+
 
         glPushMatrix();
         glTranslatef(pos_x, pos_y, pos_z);
