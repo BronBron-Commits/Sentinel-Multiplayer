@@ -20,6 +20,9 @@ static float yaw   = 0.0f; // heading (deg)
 static float cam_offset_x = 0.0f;
 static float cam_offset_y = 3.2f;
 static float cam_offset_z = 9.0f;
+static float cam_y_smooth = 0.0f;
+static float prev_pos_y = 0.0f;
+
 
 // -------- Tuning --------
 static constexpr float ACCEL        = 14.0f;
@@ -29,6 +32,9 @@ static constexpr float TILT_RETURN  = 0.86f;
 static constexpr float MAX_TILT     = 32.0f;
 static constexpr float DT           = 1.0f / 60.0f;
 static constexpr float YAW_SPEED = 90.0f; // deg/sec
+static constexpr float CAM_Y_LAG = 0.08f;
+static constexpr float CAM_Y_FOLLOW_GAIN = 0.35f;   // < 1.0 = slower than drone
+static constexpr float CAM_Y_MAX_SPEED   = 6.0f;    // units per second
 
 // -------- Rendering helpers --------
 void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
@@ -165,6 +171,8 @@ int main() {
     );
     SDL_GLContext gl = SDL_GL_CreateContext(win);
     glEnable(GL_DEPTH_TEST);
+    prev_pos_y   = pos_y;
+    cam_y_smooth = pos_y;
 
     float rotor_angle = 0.0f;
     bool running = true;
@@ -219,7 +227,27 @@ float off_x = std::sin(yaw_rad) * cam_offset_z;
 float off_z = std::cos(yaw_rad) * cam_offset_z;
 
 float cam_x = pos_x + off_x;
-float cam_y = pos_y + cam_offset_y;
+// --- vertical camera follow (slower than drone) ---
+float dy = pos_y - prev_pos_y;
+
+// camera only follows a fraction of vertical movement
+float cam_dy = dy * CAM_Y_FOLLOW_GAIN;
+
+// clamp camera vertical speed
+float max_step = CAM_Y_MAX_SPEED * DT;
+if (cam_dy >  max_step) cam_dy =  max_step;
+if (cam_dy < -max_step) cam_dy = -max_step;
+
+// apply vertical movement
+cam_y_smooth += cam_dy;
+
+// final camera Y includes base offset
+float cam_y = cam_y_smooth + cam_offset_y;
+
+// update previous drone height
+prev_pos_y = pos_y;
+
+
 float cam_z = pos_z + off_z;
 
 
