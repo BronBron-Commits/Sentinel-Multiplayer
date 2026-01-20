@@ -2,13 +2,14 @@
 #include <GL/gl.h>
 #include <cmath>
 
-static float cam_x = 0.0f;
-static float cam_y = 2.0f;
-static float cam_z = 6.0f;
-
 static float drone_x = 0.0f;
 static float drone_y = 1.0f;
 static float drone_z = 0.0f;
+
+// Camera offset relative to drone
+static float cam_offset_x = 0.0f;
+static float cam_offset_y = 2.5f;
+static float cam_offset_z = 6.0f;
 
 void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
     float f = 1.0f / std::tan(fov_deg * 0.5f * 3.1415926f / 180.0f);
@@ -46,24 +47,18 @@ void draw_cube(float s) {
 
 void draw_grid(float half_extent, float step) {
     glBegin(GL_LINES);
-
     for (float i = -half_extent; i <= half_extent; i += step) {
-        if (std::fabs(i) < 0.0001f) {
-            // axis lines
+        if (std::fabs(i) < 0.0001f)
             glColor3f(0.6f, 0.6f, 0.6f);
-        } else {
+        else
             glColor3f(0.25f, 0.25f, 0.25f);
-        }
 
-        // lines parallel to X (varying Z)
         glVertex3f(-half_extent, 0.0f, i);
         glVertex3f( half_extent, 0.0f, i);
 
-        // lines parallel to Z (varying X)
         glVertex3f(i, 0.0f, -half_extent);
         glVertex3f(i, 0.0f,  half_extent);
     }
-
     glEnd();
 }
 
@@ -90,20 +85,22 @@ int main() {
                 running = false;
         }
 
-        // camera
-        float speed = 0.08f;
-        if (keys[SDL_SCANCODE_W]) cam_z -= speed;
-        if (keys[SDL_SCANCODE_S]) cam_z += speed;
-        if (keys[SDL_SCANCODE_A]) cam_x -= speed;
-        if (keys[SDL_SCANCODE_D]) cam_x += speed;
-        if (keys[SDL_SCANCODE_Q]) cam_y -= speed;
-        if (keys[SDL_SCANCODE_E]) cam_y += speed;
+        // Drone movement
+        float speed = 0.05f;
+        if (keys[SDL_SCANCODE_UP])    drone_z -= speed;
+        if (keys[SDL_SCANCODE_DOWN])  drone_z += speed;
+        if (keys[SDL_SCANCODE_LEFT])  drone_x -= speed;
+        if (keys[SDL_SCANCODE_RIGHT]) drone_x += speed;
 
-        // drone
-        if (keys[SDL_SCANCODE_UP])    drone_z -= 0.05f;
-        if (keys[SDL_SCANCODE_DOWN])  drone_z += 0.05f;
-        if (keys[SDL_SCANCODE_LEFT])  drone_x -= 0.05f;
-        if (keys[SDL_SCANCODE_RIGHT]) drone_x += 0.05f;
+        if (keys[SDL_SCANCODE_EQUALS] || keys[SDL_SCANCODE_KP_PLUS])
+            drone_y += speed;
+        if (keys[SDL_SCANCODE_MINUS] || keys[SDL_SCANCODE_KP_MINUS])
+            drone_y -= speed;
+
+        // Camera follows drone
+        float cam_x = drone_x + cam_offset_x;
+        float cam_y = drone_y + cam_offset_y;
+        float cam_z = drone_z + cam_offset_z;
 
         glViewport(0, 0, 1280, 720);
         glClearColor(0.08f, 0.1f, 0.14f, 1.0f);
@@ -115,12 +112,14 @@ int main() {
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
+
+        // Look at drone (simple follow)
         glTranslatef(-cam_x, -cam_y, -cam_z);
 
-        // grid floor
+        // Grid
         draw_grid(100.0f, 1.0f);
 
-        // drone
+        // Drone
         glPushMatrix();
         glTranslatef(drone_x, drone_y, drone_z);
         glColor3f(0.9f, 0.2f, 0.2f);
