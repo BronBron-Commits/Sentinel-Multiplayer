@@ -492,11 +492,6 @@ void render_ui() {
     draw_rect(480, 370, 320, 50, 0.25f, 0.26f, 0.30f, 1.0f);
     draw_button_label(BTN_X, BTN_QUIT_Y,   BTN_W, BTN_H, "QUIT");
 
-    // Chat typing preview
-if (chat_typing) {
-    draw_rect(300, 660, 680, 40, 0.0f, 0.0f, 0.0f, 0.75f);
-    draw_text(320, 670, chat_buffer.c_str());
-}
 
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
@@ -562,6 +557,39 @@ void draw_button_label(int bx, int by, int bw, int bh, const char* label) {
     int ty = by + (bh - th) / 2;
 
     draw_text(tx, ty, label);
+}
+void render_chat_input() {
+    if (!chat_typing)
+        return;
+
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, win_w, win_h, 0, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    // Background box
+    draw_rect(300, win_h - 60, 680, 40,
+              0.0f, 0.0f, 0.0f, 0.75f);
+
+    // Text
+    draw_text(320, win_h - 50, chat_buffer.c_str());
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+
+    glPopAttrib();
+    glMatrixMode(GL_MODELVIEW);
 }
 
 
@@ -845,6 +873,7 @@ if (now - fps_timer >= 1000) {
 }
 
         render_ui();
+        render_chat_input();  // ALWAYS visible when typing
         render_chat_history();
 
 
