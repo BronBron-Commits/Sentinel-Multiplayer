@@ -753,11 +753,12 @@ if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) {
     } else {
         chat_typing = false;
         if (!chat_buffer.empty()) {
-    create_chat_message(chat_buffer.c_str());
-    
-    
-    push_chat_history(chat_buffer.c_str());
+    std::string full_msg = player_name + ": " + chat_buffer;
+
+    create_chat_message(full_msg.c_str());
+    push_chat_history(full_msg.c_str());
 }
+
 
     }
 }
