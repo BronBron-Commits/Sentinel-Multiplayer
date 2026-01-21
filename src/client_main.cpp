@@ -221,21 +221,21 @@ void draw_chat_billboard() {
 
     glPushMatrix();
 
-    // Position above drone
-    glTranslatef(pos_x, pos_y + 1.6f, pos_z);
+    // LOCAL offset above drone (DO NOT use pos_x/y/z here)
+    glTranslatef(0.0f, 1.35f, 0.0f);
 
-    // Face camera (yaw only for now)
+    // Face camera by undoing parent yaw
     glRotatef(yaw, 0, 1, 0);
 
-    float s = 0.005f;
+    float s = 0.012f;   // larger = readable
     float w = active_chat.w * s;
     float h = active_chat.h * s;
 
     glBegin(GL_QUADS);
-        glTexCoord2f(0, 1); glVertex3f(-w/2, 0, 0);
-        glTexCoord2f(1, 1); glVertex3f( w/2, 0, 0);
-        glTexCoord2f(1, 0); glVertex3f( w/2, h, 0);
-        glTexCoord2f(0, 0); glVertex3f(-w/2, h, 0);
+        glTexCoord2f(0, 1); glVertex3f(-w * 0.5f, 0, 0);
+        glTexCoord2f(1, 1); glVertex3f( w * 0.5f, 0, 0);
+        glTexCoord2f(1, 0); glVertex3f( w * 0.5f, h, 0);
+        glTexCoord2f(0, 0); glVertex3f(-w * 0.5f, h, 0);
     glEnd();
 
     glPopMatrix();
@@ -243,6 +243,7 @@ void draw_chat_billboard() {
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
 }
+
 
 void draw_grid(float half, float step) {
     glBegin(GL_LINES);
