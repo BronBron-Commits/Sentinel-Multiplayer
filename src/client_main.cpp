@@ -752,19 +752,48 @@ vel_z += world_az * DT;
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
 
-        // convert world velocity back into LOCAL space for tilt
-float local_vx =  vel_x * cos_y - vel_z * sin_y;
-float local_vz =  vel_x * sin_y + vel_z * cos_y;
+// tilt is driven by INPUT ACCELERATION (not velocity)
 
-        float target_pitch =  local_vz * TILT_FACTOR;
-        float target_roll  = -local_vx * TILT_FACTOR;
+// local_x : +right
+// local_z : -forward
 
+/// ----- TILT FROM ACTUAL WORLD MOTION (SINGLE SOURCE) -----
 
-        target_pitch = std::fmax(std::fmin(target_pitch, MAX_TILT), -MAX_TILT);
-        target_roll  = std::fmax(std::fmin(target_roll,  MAX_TILT), -MAX_TILT);
+float target_pitch = 0.0f;
+float target_roll  = 0.0f;
 
-        pitch = pitch * TILT_RETURN + target_pitch * (1.0f - TILT_RETURN);
-        roll  = roll  * TILT_RETURN + target_roll  * (1.0f - TILT_RETURN);
+// horizontal velocity
+float vx = vel_x;
+float vz = vel_z;
+
+float speed = std::sqrt(vx * vx + vz * vz);
+
+if (speed > 0.001f) {
+
+    // forward direction of drone (matches movement math)
+    float fwd_x =  std::sin(yaw_rad);
+    float fwd_z =  -std::cos(yaw_rad);
+
+    // right direction
+    float right_x =  fwd_z;
+    float right_z = -fwd_x;
+
+    // project velocity into drone space
+    float forward_speed = vx * fwd_x + vz * fwd_z;
+    float right_speed   = vx * right_x + vz * right_z;
+
+    // nose points INTO movement
+    target_pitch = -forward_speed * TILT_FACTOR;
+    target_roll  =  right_speed   * TILT_FACTOR;
+}
+
+// clamp
+target_pitch = std::fmax(std::fmin(target_pitch, MAX_TILT), -MAX_TILT);
+target_roll  = std::fmax(std::fmin(target_roll,  MAX_TILT), -MAX_TILT);
+
+// smooth (ONCE)
+pitch = pitch * TILT_RETURN + target_pitch * (1.0f - TILT_RETURN);
+roll  = roll  * TILT_RETURN + target_roll  * (1.0f - TILT_RETURN);
 
         rotor_angle += 1200.0f * DT;
 
