@@ -2,11 +2,22 @@
 #include <GL/gl.h>
 #include <cmath>
 #include <cstdio>
+#include <SDL2/SDL_ttf.h>
 
 enum class MenuState {
     NONE,
     PAUSE
 };
+
+// -------- UI layout (pixels) --------
+static constexpr int BTN_W = 320;
+static constexpr int BTN_H = 50;
+
+static constexpr int BTN_X = 480;
+static constexpr int BTN_RESUME_Y = 300;
+static constexpr int BTN_QUIT_Y   = 370;
+
+static TTF_Font* ui_font = nullptr;
 
 static MenuState menu_state = MenuState::NONE;
 
@@ -43,6 +54,9 @@ static constexpr float YAW_SPEED = 90.0f; // deg/sec
 static constexpr float CAM_Y_LAG = 0.08f;
 static constexpr float CAM_Y_FOLLOW_GAIN = 0.35f;   // < 1.0 = slower than drone
 static constexpr float CAM_Y_MAX_SPEED   = 6.0f;    // units per second
+
+void draw_text(int x, int y, const char* text);
+
 
 // -------- Rendering helpers --------
 void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
@@ -200,11 +214,16 @@ void draw_rect(float x, float y, float w, float h,
     glEnd();
 }
 
+static bool point_in_rect(int mx, int my, int x, int y, int w, int h) {
+    return mx >= x && mx <= x + w &&
+           my >= y && my <= y + h;
+}
+
+
 void render_ui() {
     if (menu_state == MenuState::NONE)
         return;
 
-    // --- Save ALL relevant GL state ---
     glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
 
     glDisable(GL_DEPTH_TEST);
@@ -219,31 +238,80 @@ void render_ui() {
     glPushMatrix();
     glLoadIdentity();
 
-    // --- Draw menu only (NO fullscreen overlay) ---
-    draw_rect(440, 220, 400, 280,
-              0.15f, 0.16f, 0.18f, 1.0f);
+    // Panel
+    draw_rect(440, 220, 400, 280, 0.15f, 0.16f, 0.18f, 1.0f);
 
-    draw_rect(480, 300, 320, 50,
-              0.25f, 0.26f, 0.30f, 1.0f);
+    // Resume button
+    draw_rect(480, 300, 320, 50, 0.25f, 0.26f, 0.30f, 1.0f);
+    draw_text(600, 332, "RESUME");
 
-    draw_rect(480, 370, 320, 50,
-              0.25f, 0.26f, 0.30f, 1.0f);
+    // Quit button (bottom slot)
+    draw_rect(480, 370, 320, 50, 0.25f, 0.26f, 0.30f, 1.0f);
+    draw_text(620, 402, "QUIT");
 
-    // --- Restore matrices ---
-    glPopMatrix(); // modelview
+    glPopMatrix();
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
-
-    // --- Restore ALL state ---
     glPopAttrib();
 
     glMatrixMode(GL_MODELVIEW);
 }
 
 
+void draw_text(int x, int y, const char* text) {
+    SDL_Color white = {255, 255, 255, 255};
+
+    SDL_Surface* surf = TTF_RenderUTF8_Blended(ui_font, text, white);
+    if (!surf) return;
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        surf->w,
+        surf->h,
+        0,
+        GL_BGRA,
+        GL_UNSIGNED_BYTE,
+        surf->pixels
+    );
+
+    glEnable(GL_TEXTURE_2D);
+    glColor3f(1, 1, 1);
+
+    glBegin(GL_QUADS);
+        glTexCoord2f(0, 0); glVertex2f(x, y);
+        glTexCoord2f(1, 0); glVertex2f(x + surf->w, y);
+        glTexCoord2f(1, 1); glVertex2f(x + surf->w, y + surf->h);
+        glTexCoord2f(0, 1); glVertex2f(x, y + surf->h);
+    glEnd();
+
+    glDisable(GL_TEXTURE_2D);
+
+    glDeleteTextures(1, &tex);
+    SDL_FreeSurface(surf);
+}
+
 
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
+    TTF_Init();
+ui_font = TTF_OpenFont(
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    20
+);
+
+if (!ui_font) {
+    std::fprintf(stderr, "TTF_OpenFont failed\n");
+}
+
     SDL_Window* win = SDL_CreateWindow(
         "Drone – Sunset Sky",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -266,19 +334,44 @@ int main() {
         SDL_Event e;
         const Uint8* k = SDL_GetKeyboardState(nullptr);
         while (SDL_PollEvent(&e)) {
+
     if (e.type == SDL_QUIT)
         running = false;
 
+    // Toggle menu with ESC
     if (e.type == SDL_KEYUP &&
-    e.key.keysym.sym == SDLK_ESCAPE) {
+        e.key.keysym.sym == SDLK_ESCAPE) {
 
-    if (menu_state == MenuState::NONE)
-        menu_state = MenuState::PAUSE;
-    else
-        menu_state = MenuState::NONE;
+        if (menu_state == MenuState::NONE)
+            menu_state = MenuState::PAUSE;
+        else
+            menu_state = MenuState::NONE;
+    }
+
+    // Mouse click handling (ONLY when menu is open)
+    if (menu_state == MenuState::PAUSE &&
+        e.type == SDL_MOUSEBUTTONUP &&
+        e.button.button == SDL_BUTTON_LEFT) {
+
+        int mx = e.button.x;
+        int my = e.button.y;
+
+        // Quit button
+        if (point_in_rect(mx, my,
+                           BTN_X, BTN_QUIT_Y,
+                           BTN_W, BTN_H)) {
+            running = false;
+        }
+
+        // Resume button
+        if (point_in_rect(mx, my,
+                           BTN_X, BTN_RESUME_Y,
+                           BTN_W, BTN_H)) {
+            menu_state = MenuState::NONE;
+        }
+    }
 }
 
-}
 
 
         float local_x = 0.0f;   // strafe right
@@ -430,6 +523,10 @@ if (now - fps_timer >= 1000) {
         SDL_GL_SwapWindow(win);
         SDL_Delay(16);
     }
+
+    TTF_CloseFont(ui_font);
+    TTF_Quit();
+
 
     SDL_Quit();
     return 0;
