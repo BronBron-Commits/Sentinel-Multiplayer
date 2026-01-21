@@ -214,20 +214,20 @@ void draw_chat_billboard() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    float alpha = active_chat.time_left / 3.5f;
+    float alpha = active_chat.time_left / 10.0f;
     if (alpha > 1.0f) alpha = 1.0f;
 
-    glColor4f(1.0f, 1.0f, 1.0f, alpha);
+    glColor4f(1, 1, 1, alpha);
 
     glPushMatrix();
 
-    // LOCAL offset above drone (DO NOT use pos_x/y/z here)
+    // Position above drone (LOCAL SPACE)
     glTranslatef(0.0f, 1.35f, 0.0f);
 
-    // Face camera by undoing parent yaw
-    glRotatef(yaw, 0, 1, 0);
+    // Billboard: cancel drone yaw, then face camera
+    glRotatef(2.0f * yaw, 0, 1, 0);
 
-    float s = 0.012f;   // larger = readable
+    float s = 0.012f;
     float w = active_chat.w * s;
     float h = active_chat.h * s;
 
@@ -243,6 +243,7 @@ void draw_chat_billboard() {
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
 }
+
 
 
 void draw_grid(float half, float step) {
