@@ -327,8 +327,9 @@ void create_chat_message(const char* text) {
 
 
 void render_ui() {
-    if (menu_state == MenuState::NONE)
-        return;
+    if (menu_state == MenuState::NONE && !chat_typing)
+    return;
+
 
     glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
 
