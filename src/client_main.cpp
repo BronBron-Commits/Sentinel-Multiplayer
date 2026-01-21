@@ -1,6 +1,7 @@
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include <cmath>
+#include <cstdio>
 
 // -------- Drone physical state --------
 static float pos_x = 0.0f;
@@ -180,6 +181,7 @@ void draw_metal_floor(float half_size, float y) {
 }
 
 
+
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
@@ -194,6 +196,10 @@ int main() {
 
     float rotor_angle = 0.0f;
     bool running = true;
+    Uint32 last_time = SDL_GetTicks();
+    Uint32 fps_timer = last_time;
+    int frames = 0;
+    float fps = 0.0f;
 
     while (running) {
         SDL_Event e;
@@ -293,7 +299,8 @@ prev_pos_y = pos_y;
         set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 1000.0f);
 
         glMatrixMode(GL_MODELVIEW);
-glLoadIdentity();
+        glLoadIdentity();
+
 
 /* -------------------------------------------------
    Camera parented to drone (correct hierarchy)
@@ -327,6 +334,20 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
         glRotatef(pitch, 1, 0, 0);
         draw_drone(rotor_angle);
         glPopMatrix();
+        // ---- FPS tracking ----
+Uint32 now = SDL_GetTicks();
+frames++;
+
+if (now - fps_timer >= 1000) {
+    fps = frames * 1000.0f / (now - fps_timer);
+    frames = 0;
+    fps_timer = now;
+
+    char title[128];
+    std::snprintf(title, sizeof(title),
+                  "Drone – Sunset Sky | FPS: %.1f", fps);
+    SDL_SetWindowTitle(win, title);
+}
 
         SDL_GL_SwapWindow(win);
         SDL_Delay(16);
