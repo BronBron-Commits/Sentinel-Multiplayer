@@ -5,6 +5,11 @@
 #include <SDL2/SDL_ttf.h>
 #include <string>
 
+
+int win_w = 1280;
+int win_h = 720;
+
+
 enum class MenuState {
     NONE,
     PAUSE
@@ -336,7 +341,11 @@ void render_ui() {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    glOrtho(0, 1280, 720, 0, -1, 1);
+    extern int win_w;
+    extern int win_h;
+
+    glOrtho(0, win_w, win_h, 0, -1, 1);
+
 
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
@@ -426,10 +435,12 @@ void draw_button_label(int bx, int by, int bw, int bh, const char* label) {
 
     draw_text(tx, ty, label);
 }
+
+
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
-ui_font = TTF_OpenFont(
+    ui_font = TTF_OpenFont(
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     20
 );
@@ -439,10 +450,13 @@ if (!ui_font) {
 }
 
     SDL_Window* win = SDL_CreateWindow(
-        "Drone – Sunset Sky",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        1280, 720, SDL_WINDOW_OPENGL
-    );
+    "Drone – Sunset Sky",
+    SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    1280, 720,
+    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+);
+
+    
     SDL_GLContext gl = SDL_GL_CreateContext(win);
     SDL_StartTextInput();
     
@@ -624,14 +638,14 @@ prev_pos_y = pos_y;
 
 
 
-
-        glViewport(0, 0, 1280, 720);
+        SDL_GL_GetDrawableSize(win, &win_w, &win_h);
+        glViewport(0, 0, win_w, win_h);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         
-        set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 1000.0f);
+        set_perspective(70.0f, (float)win_w / (float)win_h, 0.1f, 1000.0f);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
