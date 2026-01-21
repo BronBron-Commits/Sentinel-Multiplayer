@@ -23,6 +23,16 @@ struct ChatMessage {
     float time_left = 0.0f;
 };
 
+struct ChatLine {
+    GLuint texture = 0;
+    int w = 0;
+    int h = 0;
+    float time_left = 0.0f;
+};
+
+static constexpr int CHAT_HISTORY_MAX = 6;
+static ChatLine chat_history[CHAT_HISTORY_MAX];
+
 static ChatMessage active_chat;
 static bool chat_typing = false;
 static std::string chat_buffer;
@@ -277,6 +287,108 @@ static bool point_in_rect(int mx, int my, int x, int y, int w, int h) {
     return mx >= x && mx <= x + w &&
            my >= y && my <= y + h;
 }
+
+void render_chat_history() {
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, win_w, win_h, 0, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    int x = win_w - 20;
+    int y = win_h - 20;
+
+    for (int i = 0; i < CHAT_HISTORY_MAX; ++i) {
+        ChatLine& c = chat_history[i];
+        if (!c.texture || c.time_left <= 0.0f)
+            continue;
+
+        float alpha = c.time_left / 8.0f;
+        if (alpha > 1.0f) alpha = 1.0f;
+
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, c.texture);
+        glColor4f(1, 1, 1, alpha);
+
+        glBegin(GL_QUADS);
+            glTexCoord2f(0, 0); glVertex2f(x - c.w, y - c.h);
+            glTexCoord2f(1, 0); glVertex2f(x,       y - c.h);
+            glTexCoord2f(1, 1); glVertex2f(x,       y);
+            glTexCoord2f(0, 1); glVertex2f(x - c.w, y);
+        glEnd();
+
+        glDisable(GL_TEXTURE_2D);
+
+        y -= (c.h + 6);
+    }
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+
+    glPopAttrib();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+
+void push_chat_history(const char* text) {
+    // Shift older messages up
+    for (int i = CHAT_HISTORY_MAX - 1; i > 0; --i) {
+        chat_history[i] = chat_history[i - 1];
+    }
+
+    // Destroy overwritten texture
+    if (chat_history[0].texture) {
+        glDeleteTextures(1, &chat_history[0].texture);
+    }
+
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Surface* surf = TTF_RenderUTF8_Blended(ui_font, text, white);
+    if (!surf) return;
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        surf->w,
+        surf->h,
+        0,
+        GL_BGRA,
+        GL_UNSIGNED_BYTE,
+        surf->pixels
+    );
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    SDL_FreeSurface(surf);
+
+    chat_history[0].texture = tex;
+    chat_history[0].w = surf->w;
+    chat_history[0].h = surf->h;
+    chat_history[0].time_left = 8.0f; // seconds visible
+}
+
+
 void create_chat_message(const char* text) {
     if (active_chat.texture) {
         glDeleteTextures(1, &active_chat.texture);
@@ -327,7 +439,7 @@ void create_chat_message(const char* text) {
 
 
 void render_ui() {
-    if (menu_state == MenuState::NONE && !chat_typing)
+    if (menu_state == MenuState::NONE)
     return;
 
 
@@ -342,9 +454,6 @@ void render_ui() {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    extern int win_w;
-    extern int win_h;
-
     glOrtho(0, win_w, win_h, 0, -1, 1);
 
 
@@ -522,8 +631,10 @@ if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) {
     } else {
         chat_typing = false;
         if (!chat_buffer.empty()) {
-            create_chat_message(chat_buffer.c_str());
-        }
+    create_chat_message(chat_buffer.c_str());
+    push_chat_history(chat_buffer.c_str());
+}
+
     }
 }
 
@@ -554,18 +665,19 @@ if (chat_typing &&
 float local_z = 0.0f;   // forward
 float ay = 0.0f;   // vertical movement
 
+if (!chat_typing && menu_state == MenuState::NONE) {
 
-if (k[SDL_SCANCODE_LEFT])  local_x -= ACCEL;
-if (k[SDL_SCANCODE_RIGHT]) local_x += ACCEL;
-if (k[SDL_SCANCODE_UP])    local_z -= ACCEL;  // forward = -Z
-if (k[SDL_SCANCODE_DOWN])  local_z += ACCEL;
+    if (k[SDL_SCANCODE_LEFT])  local_x -= ACCEL;
+    if (k[SDL_SCANCODE_RIGHT]) local_x += ACCEL;
+    if (k[SDL_SCANCODE_UP])    local_z -= ACCEL;
+    if (k[SDL_SCANCODE_DOWN])  local_z += ACCEL;
 
-if (k[SDL_SCANCODE_W]) ay += ACCEL;
-if (k[SDL_SCANCODE_S]) ay -= ACCEL;
+    if (k[SDL_SCANCODE_W]) ay += ACCEL;
+    if (k[SDL_SCANCODE_S]) ay -= ACCEL;
 
-// yaw control FIRST
-if (k[SDL_SCANCODE_A]) yaw += YAW_SPEED * DT;
-if (k[SDL_SCANCODE_D]) yaw -= YAW_SPEED * DT;
+    if (k[SDL_SCANCODE_A]) yaw += YAW_SPEED * DT;
+    if (k[SDL_SCANCODE_D]) yaw -= YAW_SPEED * DT;
+}
 
 // now compute yaw-dependent movement
 float yaw_rad = yaw * 3.1415926f / 180.0f;
@@ -612,6 +724,18 @@ float local_vz =  vel_x * sin_y + vel_z * cos_y;
     if (active_chat.time_left <= 0.0f && active_chat.texture) {
         glDeleteTextures(1, &active_chat.texture);
         active_chat.texture = 0;
+    }
+}
+
+// ---- chat history lifetime ----
+for (int i = 0; i < CHAT_HISTORY_MAX; ++i) {
+    if (chat_history[i].time_left > 0.0f) {
+        chat_history[i].time_left -= DT;
+        if (chat_history[i].time_left <= 0.0f &&
+            chat_history[i].texture) {
+            glDeleteTextures(1, &chat_history[i].texture);
+            chat_history[i].texture = 0;
+        }
     }
 }
 
@@ -701,6 +825,8 @@ if (now - fps_timer >= 1000) {
 }
 
         render_ui();
+        render_chat_history();
+
 
         SDL_GL_SwapWindow(win);
         SDL_Delay(16);
