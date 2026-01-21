@@ -198,12 +198,10 @@ if (k[SDL_SCANCODE_A]) yaw -= YAW_SPEED * DT;
 if (k[SDL_SCANCODE_D]) yaw += YAW_SPEED * DT;
 
 
-// rotate local input into world space
-float sin_yaw = std::sin(yaw_rad);
-float cos_yaw = std::cos(yaw_rad);
+// WORLD-relative movement (no yaw rotation here)
+float world_ax = ax;
+float world_az = az;
 
-float world_ax = ax * cos_yaw - az * sin_yaw;
-float world_az = ax * sin_yaw + az * cos_yaw;
 
 // apply velocity
 vel_x += world_ax * DT;
@@ -241,11 +239,8 @@ vel_z += world_az * DT;
         rotor_angle += 1200.0f * DT;
 
         
-// rotate camera offset around Y (drone-local space)
-float off_x = std::sin(yaw_rad) * cam_offset_z;
-float off_z = std::cos(yaw_rad) * cam_offset_z;
 
-float cam_x = pos_x + off_x;
+
 // --- vertical camera follow (slower than drone) ---
 float dy = pos_y - prev_pos_y;
 
@@ -267,7 +262,6 @@ float cam_y = cam_y_smooth + cam_offset_y;
 prev_pos_y = pos_y;
 
 
-float cam_z = pos_z + off_z;
 
 
         glViewport(0, 0, 1280, 720);
@@ -279,20 +273,29 @@ float cam_z = pos_z + off_z;
         set_perspective(70.0f, 1280.0f/720.0f, 0.1f, 1000.0f);
 
         glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-// 1. rotate camera to match drone heading
+glLoadIdentity();
+
+/* -------------------------------------------------
+   Camera parented to drone (correct hierarchy)
+   ------------------------------------------------- */
+
+// 1. Camera local offset (child of drone)
+//    Negative Z = behind drone, negative Y = above
+glTranslatef(0.0f, -cam_offset_y, -cam_offset_z);
+
+// 2. Undo drone rotation
 glRotatef(-yaw, 0, 1, 0);
 
-// 2. move camera into place
-glTranslatef(-cam_x, -cam_y, -cam_z);
+// 3. Undo drone translation
+glTranslatef(-pos_x, -pos_y, -pos_z);
+
+
 
 
         glPushMatrix();
-        glTranslatef(cam_x, cam_y, cam_z);
         draw_skybox(600.0f);
         glPopMatrix();
 
-        glTranslatef(-cam_x, -cam_y, -cam_z);
         draw_terrain(500.0f, 4.0f);
 
         draw_grid(200.0f, 5.0f);
