@@ -339,12 +339,29 @@ void render_chat_history() {
     glMatrixMode(GL_MODELVIEW);
 }
 
+void destroy_chat_line(ChatLine& c) {
+    if (c.texture) {
+        glDeleteTextures(1, &c.texture);
+        c.texture = 0;
+    }
+    c.w = 0;
+    c.h = 0;
+    c.time_left = 0.0f;
+}
 
 void push_chat_history(const char* text) {
-    // Shift older messages up
+
     for (int i = CHAT_HISTORY_MAX - 1; i > 0; --i) {
-        chat_history[i] = chat_history[i - 1];
-    }
+    destroy_chat_line(chat_history[i]);
+
+    chat_history[i].texture   = chat_history[i - 1].texture;
+    chat_history[i].w         = chat_history[i - 1].w;
+    chat_history[i].h         = chat_history[i - 1].h;
+    chat_history[i].time_left = chat_history[i - 1].time_left;
+
+    chat_history[i - 1].texture = 0;
+}
+
 
     // Destroy overwritten texture
     if (chat_history[0].texture) {
@@ -632,6 +649,8 @@ if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) {
         chat_typing = false;
         if (!chat_buffer.empty()) {
     create_chat_message(chat_buffer.c_str());
+    
+    
     push_chat_history(chat_buffer.c_str());
 }
 
