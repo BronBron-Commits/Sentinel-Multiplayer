@@ -56,6 +56,7 @@ static constexpr float CAM_Y_FOLLOW_GAIN = 0.35f;   // < 1.0 = slower than drone
 static constexpr float CAM_Y_MAX_SPEED   = 6.0f;    // units per second
 
 void draw_text(int x, int y, const char* text);
+void draw_button_label(int bx, int by, int bw, int bh, const char* label);
 
 
 // -------- Rendering helpers --------
@@ -228,6 +229,9 @@ void render_ui() {
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -242,16 +246,19 @@ void render_ui() {
     draw_rect(440, 220, 400, 280, 0.15f, 0.16f, 0.18f, 1.0f);
 
     // Resume button
+    
+    
     draw_rect(480, 300, 320, 50, 0.25f, 0.26f, 0.30f, 1.0f);
-    draw_text(600, 332, "RESUME");
+    draw_button_label(BTN_X, BTN_RESUME_Y, BTN_W, BTN_H, "RESUME");
 
     // Quit button (bottom slot)
     draw_rect(480, 370, 320, 50, 0.25f, 0.26f, 0.30f, 1.0f);
-    draw_text(620, 402, "QUIT");
+    draw_button_label(BTN_X, BTN_QUIT_Y,   BTN_W, BTN_H, "QUIT");
 
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
+    glDisable(GL_BLEND);
     glPopAttrib();
 
     glMatrixMode(GL_MODELVIEW);
@@ -270,6 +277,8 @@ void draw_text(int x, int y, const char* text) {
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
 
     glTexImage2D(
         GL_TEXTURE_2D,
@@ -284,7 +293,7 @@ void draw_text(int x, int y, const char* text) {
     );
 
     glEnable(GL_TEXTURE_2D);
-    glColor3f(1, 1, 1);
+    glColor3f(1.0f, 1.0f, 1.0f);
 
     glBegin(GL_QUADS);
         glTexCoord2f(0, 0); glVertex2f(x, y);
@@ -299,7 +308,15 @@ void draw_text(int x, int y, const char* text) {
     SDL_FreeSurface(surf);
 }
 
+void draw_button_label(int bx, int by, int bw, int bh, const char* label) {
+    int tw, th;
+    TTF_SizeUTF8(ui_font, label, &tw, &th);
 
+    int tx = bx + (bw - tw) / 2;
+    int ty = by + (bh - th) / 2;
+
+    draw_text(tx, ty, label);
+}
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
@@ -515,8 +532,6 @@ if (now - fps_timer >= 1000) {
                   "Drone – Sunset Sky | FPS: %.1f", fps);
     SDL_SetWindowTitle(win, title);
 }
-
-
 
         render_ui();
 
