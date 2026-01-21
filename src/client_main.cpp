@@ -207,8 +207,8 @@ float sin_y = std::sin(yaw_rad);
 float cos_y = std::cos(yaw_rad);
 
 
-float world_ax = local_x * cos_y + local_z * sin_y;
-float world_az = local_x * sin_y + local_z * cos_y;
+float world_ax =  local_x * cos_y + local_z * sin_y;
+float world_az = -local_x * sin_y + local_z * cos_y;
 
 // apply velocity ONCE
 vel_x += world_ax * DT;
