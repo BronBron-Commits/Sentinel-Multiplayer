@@ -790,7 +790,9 @@ float local_z = 0.0f;
 float ay = 0.0f;
 
 
-if (!chat_typing && menu_state == MenuState::NONE) {
+if (!chat_typing &&
+    !entering_name &&
+    menu_state == MenuState::NONE) {
 
     if (k[SDL_SCANCODE_LEFT])  local_x -= ACCEL;
     if (k[SDL_SCANCODE_RIGHT]) local_x += ACCEL;
