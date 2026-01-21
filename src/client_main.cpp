@@ -224,8 +224,13 @@ vel_z += world_az * DT;
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
 
-        float target_pitch =  vel_z * TILT_FACTOR;
-        float target_roll  = -vel_x * TILT_FACTOR;
+        // convert world velocity back into LOCAL space for tilt
+float local_vx =  vel_x * cos_y - vel_z * sin_y;
+float local_vz =  vel_x * sin_y + vel_z * cos_y;
+
+        float target_pitch =  local_vz * TILT_FACTOR;
+        float target_roll  = -local_vx * TILT_FACTOR;
+
 
         target_pitch = std::fmax(std::fmin(target_pitch, MAX_TILT), -MAX_TILT);
         target_roll  = std::fmax(std::fmin(target_roll,  MAX_TILT), -MAX_TILT);
