@@ -9,6 +9,10 @@
 int win_w = 1280;
 int win_h = 720;
 
+// -------- Player identity --------
+static bool entering_name = true;
+static std::string player_name;
+static std::string name_buffer;
 
 enum class MenuState {
     NONE,
@@ -593,6 +597,33 @@ void render_chat_input() {
     glMatrixMode(GL_MODELVIEW);
 }
 
+void render_name_entry() {
+    if (!entering_name)
+        return;
+
+    glDisable(GL_DEPTH_TEST);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, win_w, win_h, 0, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    draw_rect(360, 260, 560, 200, 0, 0, 0, 0.85f);
+    draw_text(420, 300, "ENTER YOUR NAME");
+    draw_text(420, 340, name_buffer.c_str());
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+
+    glMatrixMode(GL_MODELVIEW);
+    glEnable(GL_DEPTH_TEST);
+}
+
 
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
@@ -633,6 +664,30 @@ if (!ui_font) {
         SDL_Event e;
         const Uint8* k = SDL_GetKeyboardState(nullptr);
         while (SDL_PollEvent(&e)) {
+
+    // -------- NAME ENTRY MODE --------
+if (entering_name) {
+
+    if (e.type == SDL_TEXTINPUT) {
+        name_buffer += e.text.text;
+    }
+
+    if (e.type == SDL_KEYDOWN) {
+
+        if (e.key.keysym.sym == SDLK_BACKSPACE && !name_buffer.empty()) {
+            name_buffer.pop_back();
+        }
+
+        if (e.key.keysym.sym == SDLK_RETURN && !name_buffer.empty()) {
+            player_name = name_buffer;
+            name_buffer.clear();
+            entering_name = false;
+        }
+    }
+
+    continue; // block ALL other input until name entered
+}
+
 
     if (e.type == SDL_QUIT)
         running = false;
@@ -706,13 +761,13 @@ if (chat_typing &&
     chat_buffer.pop_back();
 }
 
-}
+}   // <-- CLOSE while (SDL_PollEvent)
 
+// ================== GAME UPDATE ==================
+float local_x = 0.0f;
+float local_z = 0.0f;
+float ay = 0.0f;
 
-
-        float local_x = 0.0f;   // strafe right
-float local_z = 0.0f;   // forward
-float ay = 0.0f;   // vertical movement
 
 if (!chat_typing && menu_state == MenuState::NONE) {
 
@@ -902,15 +957,23 @@ if (now - fps_timer >= 1000) {
     SDL_SetWindowTitle(win, title);
 }
 
-        render_ui();
-        render_chat_input();  // ALWAYS visible when typing
-        render_chat_history();
+// ================= UI / OVERLAYS =================
+glDisable(GL_DEPTH_TEST);
+
+render_name_entry();   // name prompt
+render_ui();           // ESC pause menu
+render_chat_input();   // typing bar
+render_chat_history(); // chat log
+
+glEnable(GL_DEPTH_TEST);
+
+// ================= PRESENT FRAME =================
+SDL_GL_SwapWindow(win);
+SDL_Delay(16);
 
 
-        SDL_GL_SwapWindow(win);
-        SDL_Delay(16);
-    }
-
+}
+    
     TTF_CloseFont(ui_font);
     TTF_Quit();
 
