@@ -9,6 +9,15 @@
 int win_w = 1280;
 int win_h = 720;
 
+struct NameTag {
+    GLuint texture = 0;
+    int w = 0;
+    int h = 0;
+};
+
+static NameTag player_name_tag;
+
+
 // -------- Player identity --------
 static bool entering_name = true;
 static std::string player_name;
@@ -224,6 +233,44 @@ void draw_drone(float rotor_angle) {
         }
 }
 
+void draw_name_tag() {
+    if (!player_name_tag.texture)
+        return;
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, player_name_tag.texture);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glColor4f(1, 1, 1, 1);
+
+    glPushMatrix();
+
+    // Slightly above chat bubble
+    glTranslatef(0.0f, 1.75f, 0.0f);
+
+    // Billboard: cancel yaw
+    glRotatef(2.0f * yaw, 0, 1, 0);
+
+    float s = 0.010f;
+    float w = player_name_tag.w * s;
+    float h = player_name_tag.h * s;
+
+    glBegin(GL_QUADS);
+        glTexCoord2f(0, 1); glVertex3f(-w * 0.5f, 0, 0);
+        glTexCoord2f(1, 1); glVertex3f( w * 0.5f, 0, 0);
+        glTexCoord2f(1, 0); glVertex3f( w * 0.5f, h, 0);
+        glTexCoord2f(0, 0); glVertex3f(-w * 0.5f, h, 0);
+    glEnd();
+
+    glPopMatrix();
+
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+}
+
+
 void draw_chat_billboard() {
     if (!active_chat.texture || active_chat.time_left <= 0.0f)
         return;
@@ -428,6 +475,7 @@ glTexImage2D(
     chat_history[0].h = surf->h;
     chat_history[0].time_left = 8.0f; // seconds visible
 }
+
 
 
 void create_chat_message(const char* text) {
@@ -644,6 +692,50 @@ void render_name_entry() {
     glEnable(GL_DEPTH_TEST);
 }
 
+void create_name_tag() {
+    if (player_name_tag.texture) {
+        glDeleteTextures(1, &player_name_tag.texture);
+        player_name_tag.texture = 0;
+    }
+
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Surface* surf =
+        TTF_RenderUTF8_Blended(ui_font, player_name.c_str(), white);
+
+    if (!surf) return;
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    PixelStoreGuard ps;
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        surf->w,
+        surf->h,
+        0,
+        GL_BGRA,
+        GL_UNSIGNED_BYTE,
+        surf->pixels
+    );
+
+    SDL_FreeSurface(surf);
+
+    player_name_tag.texture = tex;
+    player_name_tag.w = surf->w;
+    player_name_tag.h = surf->h;
+}
+
 
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
@@ -699,10 +791,13 @@ if (entering_name) {
         }
 
         if (e.key.keysym.sym == SDLK_RETURN && !name_buffer.empty()) {
-            player_name = name_buffer;
-            name_buffer.clear();
-            entering_name = false;
-        }
+    player_name = name_buffer;
+    name_buffer.clear();
+    entering_name = false;
+
+    create_name_tag();   // ← ADD THIS
+}
+
     }
 
     continue; // block ALL other input until name entered
@@ -963,6 +1058,7 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
         glRotatef(roll,  0, 0, 1);
         glRotatef(pitch, 1, 0, 0);
         draw_drone(rotor_angle);
+        draw_name_tag();
         draw_chat_billboard();
         glPopMatrix();
         // ---- FPS tracking ----
