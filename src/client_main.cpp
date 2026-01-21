@@ -25,8 +25,8 @@ static float prev_pos_y = 0.0f;
 
 
 // -------- Tuning --------
-static constexpr float ACCEL        = 14.0f;
-static constexpr float DRAG         = 0.90f;
+static constexpr float ACCEL        = 65.0f;
+static constexpr float DRAG         = 0.97f;
 static constexpr float TILT_FACTOR  = 9.0f;
 static constexpr float TILT_RETURN  = 0.86f;
 static constexpr float MAX_TILT     = 32.0f;
