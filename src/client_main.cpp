@@ -183,41 +183,38 @@ int main() {
         while (SDL_PollEvent(&e))
             if (e.type == SDL_QUIT) running = false;
 
-        float ax = 0, ay = 0, az = 0;
-        if (k[SDL_SCANCODE_LEFT])  ax -= ACCEL;
-        if (k[SDL_SCANCODE_RIGHT]) ax += ACCEL;
-        if (k[SDL_SCANCODE_UP])    az -= ACCEL;
-        if (k[SDL_SCANCODE_DOWN])  az += ACCEL;
-        if (k[SDL_SCANCODE_W]) ay += ACCEL;
-        if (k[SDL_SCANCODE_S]) ay -= ACCEL;
+        float local_x = 0.0f;   // strafe right
+float local_z = 0.0f;   // forward
+float ay = 0.0f;   // vertical movement
 
-        float yaw_rad = yaw * 3.1415926f / 180.0f;
 
-// yaw update FIRST
+if (k[SDL_SCANCODE_LEFT])  local_x -= ACCEL;
+if (k[SDL_SCANCODE_RIGHT]) local_x += ACCEL;
+if (k[SDL_SCANCODE_UP])    local_z -= ACCEL;  // forward = -Z
+if (k[SDL_SCANCODE_DOWN])  local_z += ACCEL;
+
+if (k[SDL_SCANCODE_W]) ay += ACCEL;
+if (k[SDL_SCANCODE_S]) ay -= ACCEL;
+
+// yaw control FIRST
 if (k[SDL_SCANCODE_A]) yaw += YAW_SPEED * DT;
 if (k[SDL_SCANCODE_D]) yaw -= YAW_SPEED * DT;
 
+// now compute yaw-dependent movement
+float yaw_rad = yaw * 3.1415926f / 180.0f;
 
-// WORLD-relative movement (no yaw rotation here)
-float world_ax = ax;
-float world_az = az;
+float sin_y = std::sin(yaw_rad);
+float cos_y = std::cos(yaw_rad);
 
 
-// apply velocity
+float world_ax = local_x * cos_y + local_z * sin_y;
+float world_az = local_x * sin_y + local_z * cos_y;
+
+// apply velocity ONCE
 vel_x += world_ax * DT;
 vel_y += ay * DT;
 vel_z += world_az * DT;
 
-
-        // yaw control (A/D)
-
-        if (k[SDL_SCANCODE_A]) yaw += YAW_SPEED * DT;
-
-        if (k[SDL_SCANCODE_D]) yaw -= YAW_SPEED * DT;
-
-        vel_x += world_ax * DT;
-        vel_y += ay * DT;
-        vel_z += world_az * DT;
 
         vel_x *= DRAG;
         vel_y *= DRAG;
