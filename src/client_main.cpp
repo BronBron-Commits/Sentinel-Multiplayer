@@ -194,8 +194,8 @@ int main() {
         float yaw_rad = yaw * 3.1415926f / 180.0f;
 
 // yaw update FIRST
-if (k[SDL_SCANCODE_A]) yaw -= YAW_SPEED * DT;
-if (k[SDL_SCANCODE_D]) yaw += YAW_SPEED * DT;
+if (k[SDL_SCANCODE_A]) yaw += YAW_SPEED * DT;
+if (k[SDL_SCANCODE_D]) yaw -= YAW_SPEED * DT;
 
 
 // WORLD-relative movement (no yaw rotation here)
@@ -211,9 +211,9 @@ vel_z += world_az * DT;
 
         // yaw control (A/D)
 
-        if (k[SDL_SCANCODE_A]) yaw -= YAW_SPEED * DT;
+        if (k[SDL_SCANCODE_A]) yaw += YAW_SPEED * DT;
 
-        if (k[SDL_SCANCODE_D]) yaw += YAW_SPEED * DT;
+        if (k[SDL_SCANCODE_D]) yaw -= YAW_SPEED * DT;
 
         vel_x += world_ax * DT;
         vel_y += ay * DT;
