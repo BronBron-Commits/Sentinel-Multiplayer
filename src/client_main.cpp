@@ -32,6 +32,8 @@ struct ChatLine {
 
 static constexpr int CHAT_HISTORY_MAX = 6;
 static ChatLine chat_history[CHAT_HISTORY_MAX];
+static constexpr int CHAT_WRAP_WIDTH   = 360;  // chat history (bottom right)
+static constexpr int CHAT_BUBBLE_WRAP  = 420;  // billboard above drone
 
 static ChatMessage active_chat;
 static bool chat_typing = false;
@@ -369,7 +371,7 @@ void push_chat_history(const char* text) {
     }
 
     SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface* surf = TTF_RenderUTF8_Blended(ui_font, text, white);
+    SDL_Surface* surf = TTF_RenderUTF8_Blended_Wrapped(ui_font, text, white, CHAT_WRAP_WIDTH);
     if (!surf) return;
 
     GLuint tex;
@@ -413,7 +415,8 @@ void create_chat_message(const char* text) {
     }
 
     SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface* surf = TTF_RenderUTF8_Blended(ui_font, text, white);
+    SDL_Surface* surf =
+    TTF_RenderUTF8_Blended_Wrapped(ui_font, text, white, CHAT_BUBBLE_WRAP);
     if (!surf) return;
 
     GLuint tex;
@@ -440,9 +443,6 @@ void create_chat_message(const char* text) {
         surf->pixels
     );
     
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
@@ -822,7 +822,7 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
 
         glPushMatrix();
         glTranslatef(pos_x, pos_y, pos_z);
-        glRotatef(yaw, 0, 1, 0);
+        glRotatef(-yaw, 0, 1, 0);
         glRotatef(roll,  0, 0, 1);
         glRotatef(pitch, 1, 0, 0);
         draw_drone(rotor_angle);
