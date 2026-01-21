@@ -452,7 +452,7 @@ void create_chat_message(const char* text) {
     active_chat.texture = tex;
     active_chat.w = surf->w;
     active_chat.h = surf->h;
-    active_chat.time_left = 3.5f;
+    active_chat.time_left = 10.0f;
 }
 
 
