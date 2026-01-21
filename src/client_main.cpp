@@ -3,11 +3,24 @@
 #include <cmath>
 #include <cstdio>
 #include <SDL2/SDL_ttf.h>
+#include <string>
 
 enum class MenuState {
     NONE,
     PAUSE
 };
+
+struct ChatMessage {
+    std::string text;
+    GLuint texture = 0;
+    int w = 0;
+    int h = 0;
+    float time_left = 0.0f;
+};
+
+static ChatMessage active_chat;
+static bool chat_typing = false;
+static std::string chat_buffer;
 
 // -------- UI layout (pixels) --------
 static constexpr int BTN_W = 320;
@@ -174,6 +187,46 @@ void draw_drone(float rotor_angle) {
         }
 }
 
+void draw_chat_billboard() {
+    if (!active_chat.texture || active_chat.time_left <= 0.0f)
+        return;
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, active_chat.texture);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    float alpha = active_chat.time_left / 3.5f;
+    if (alpha > 1.0f) alpha = 1.0f;
+
+    glColor4f(1.0f, 1.0f, 1.0f, alpha);
+
+    glPushMatrix();
+
+    // Position above drone
+    glTranslatef(pos_x, pos_y + 1.6f, pos_z);
+
+    // Face camera (yaw only for now)
+    glRotatef(yaw, 0, 1, 0);
+
+    float s = 0.005f;
+    float w = active_chat.w * s;
+    float h = active_chat.h * s;
+
+    glBegin(GL_QUADS);
+        glTexCoord2f(0, 1); glVertex3f(-w/2, 0, 0);
+        glTexCoord2f(1, 1); glVertex3f( w/2, 0, 0);
+        glTexCoord2f(1, 0); glVertex3f( w/2, h, 0);
+        glTexCoord2f(0, 0); glVertex3f(-w/2, h, 0);
+    glEnd();
+
+    glPopMatrix();
+
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+}
+
 void draw_grid(float half, float step) {
     glBegin(GL_LINES);
     for (float i = -half; i <= half; i += step) {
@@ -219,6 +272,53 @@ static bool point_in_rect(int mx, int my, int x, int y, int w, int h) {
     return mx >= x && mx <= x + w &&
            my >= y && my <= y + h;
 }
+void create_chat_message(const char* text) {
+    if (active_chat.texture) {
+        glDeleteTextures(1, &active_chat.texture);
+        active_chat.texture = 0;
+    }
+
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Surface* surf = TTF_RenderUTF8_Blended(ui_font, text, white);
+    if (!surf) return;
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        surf->w,
+        surf->h,
+        0,
+        GL_BGRA,
+        GL_UNSIGNED_BYTE,
+        surf->pixels
+    );
+    
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    SDL_FreeSurface(surf);
+
+    active_chat.texture = tex;
+    active_chat.w = surf->w;
+    active_chat.h = surf->h;
+    active_chat.time_left = 3.5f;
+}
 
 
 void render_ui() {
@@ -254,6 +354,12 @@ void render_ui() {
     // Quit button (bottom slot)
     draw_rect(480, 370, 320, 50, 0.25f, 0.26f, 0.30f, 1.0f);
     draw_button_label(BTN_X, BTN_QUIT_Y,   BTN_W, BTN_H, "QUIT");
+
+    // Chat typing preview
+if (chat_typing) {
+    draw_rect(300, 660, 680, 40, 0.0f, 0.0f, 0.0f, 0.75f);
+    draw_text(320, 670, chat_buffer.c_str());
+}
 
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
@@ -291,6 +397,9 @@ void draw_text(int x, int y, const char* text) {
         GL_UNSIGNED_BYTE,
         surf->pixels
     );
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     glEnable(GL_TEXTURE_2D);
     glColor3f(1.0f, 1.0f, 1.0f);
@@ -335,6 +444,8 @@ if (!ui_font) {
         1280, 720, SDL_WINDOW_OPENGL
     );
     SDL_GLContext gl = SDL_GL_CreateContext(win);
+    SDL_StartTextInput();
+    
     glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     prev_pos_y   = pos_y;
@@ -387,6 +498,39 @@ if (!ui_font) {
             menu_state = MenuState::NONE;
         }
     }
+    
+    // Start / send chat
+if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) {
+    if (!chat_typing) {
+        chat_typing = true;
+        chat_buffer.clear();
+    } else {
+        chat_typing = false;
+        if (!chat_buffer.empty()) {
+            create_chat_message(chat_buffer.c_str());
+        }
+    }
+}
+
+// Cancel typing
+if (chat_typing && e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
+    chat_typing = false;
+    chat_buffer.clear();
+}
+
+// Text input
+if (chat_typing && e.type == SDL_TEXTINPUT) {
+    chat_buffer += e.text.text;
+}
+
+// Backspace
+if (chat_typing &&
+    e.type == SDL_KEYDOWN &&
+    e.key.keysym.sym == SDLK_BACKSPACE &&
+    !chat_buffer.empty()) {
+    chat_buffer.pop_back();
+}
+
 }
 
 
@@ -448,7 +592,14 @@ float local_vz =  vel_x * sin_y + vel_z * cos_y;
 
         rotor_angle += 1200.0f * DT;
 
-        
+        if (active_chat.time_left > 0.0f) {
+    active_chat.time_left -= DT;
+    if (active_chat.time_left <= 0.0f && active_chat.texture) {
+        glDeleteTextures(1, &active_chat.texture);
+        active_chat.texture = 0;
+    }
+}
+
 
 
 // --- vertical camera follow (slower than drone) ---
@@ -517,6 +668,7 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
         glRotatef(roll,  0, 0, 1);
         glRotatef(pitch, 1, 0, 0);
         draw_drone(rotor_angle);
+        draw_chat_billboard();
         glPopMatrix();
         // ---- FPS tracking ----
 Uint32 now = SDL_GetTicks();
