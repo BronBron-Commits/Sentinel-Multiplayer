@@ -14,6 +14,22 @@ static bool entering_name = true;
 static std::string player_name;
 static std::string name_buffer;
 
+struct PixelStoreGuard {
+    GLint alignment;
+    GLint row_length;
+
+    PixelStoreGuard() {
+        glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+        glGetIntegerv(GL_UNPACK_ROW_LENGTH, &row_length);
+    }
+
+    ~PixelStoreGuard() {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length);
+    }
+};
+
+
 enum class MenuState {
     NONE,
     PAUSE
@@ -387,23 +403,23 @@ void push_chat_history(const char* text) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
+    PixelStoreGuard ps;
 
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA,
-        surf->w,
-        surf->h,
-        0,
-        GL_BGRA,
-        GL_UNSIGNED_BYTE,
-        surf->pixels
-    );
+glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
 
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+glTexImage2D(
+    GL_TEXTURE_2D,
+    0,
+    GL_RGBA,
+    surf->w,
+    surf->h,
+    0,
+    GL_BGRA,
+    GL_UNSIGNED_BYTE,
+    surf->pixels
+);
+
 
     SDL_FreeSurface(surf);
 
@@ -539,7 +555,11 @@ void draw_text(int x, int y, const char* text) {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     glEnable(GL_TEXTURE_2D);
-    glColor3f(1.0f, 1.0f, 1.0f);
+glEnable(GL_BLEND);
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
 
     glBegin(GL_QUADS);
         glTexCoord2f(0, 0); glVertex2f(x, y);
