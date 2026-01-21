@@ -49,6 +49,7 @@ void set_perspective(float fov_deg, float aspect, float znear, float zfar) {
 }
 
 static void draw_terrain(float radius, float step);
+void draw_metal_floor(float half_size, float y);
 
 // -------- SUNSET SKYBOX --------
 void draw_skybox(float s) {
@@ -161,6 +162,23 @@ void draw_grid(float half, float step) {
     }
     glEnd();
 }
+
+void draw_metal_floor(float half_size, float y) {
+    glDisable(GL_CULL_FACE);
+
+    glBegin(GL_QUADS);
+
+    // base metal color
+    glColor3f(0.35f, 0.36f, 0.38f);
+
+    glVertex3f(-half_size, y, -half_size);
+    glVertex3f( half_size, y, -half_size);
+    glVertex3f( half_size, y,  half_size);
+    glVertex3f(-half_size, y,  half_size);
+
+    glEnd();
+}
+
 
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
@@ -298,7 +316,7 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
         draw_skybox(600.0f);
         glPopMatrix();
 
-        draw_terrain(500.0f, 4.0f);
+        draw_metal_floor(500.0f, 0.0f);
 
         draw_grid(200.0f, 5.0f);
 
@@ -316,35 +334,4 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
 
     SDL_Quit();
     return 0;
-}
-
-// -------- Procedural Terrain --------
-static float terrain_noise(float x, float z) {
-    return std::sin(x * 0.08f) * std::cos(z * 0.08f);
-}
-
-static float terrain_height(float x, float z) {
-    float h = 0.0f;
-    h += terrain_noise(x, z) * 3.0f;
-    h += terrain_noise(x * 0.5f, z * 0.5f) * 6.0f;
-    return h;
-}
-
-static void draw_terrain(float radius, float step) {
-    for (float z = -radius; z < radius; z += step) {
-        glBegin(GL_TRIANGLE_STRIP);
-        for (float x = -radius; x <= radius; x += step) {
-            float h1 = terrain_height(x, z);
-            float h2 = terrain_height(x, z + step);
-
-            float c = (h1 + 10.0f) / 20.0f;
-            if (c < 0.3f)      glColor3f(0.75f, 0.65f, 0.45f); // sand
-            else if (c < 0.6f) glColor3f(0.25f, 0.55f, 0.30f); // grass
-            else               glColor3f(0.45f, 0.45f, 0.45f); // rock
-
-            glVertex3f(x, h1, z);
-            glVertex3f(x, h2, z + step);
-        }
-        glEnd();
-    }
 }
