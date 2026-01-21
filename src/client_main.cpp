@@ -3,6 +3,13 @@
 #include <cmath>
 #include <cstdio>
 
+enum class MenuState {
+    NONE,
+    PAUSE
+};
+
+static MenuState menu_state = MenuState::NONE;
+
 // -------- Drone physical state --------
 static float pos_x = 0.0f;
 static float pos_y = 1.0f;
@@ -182,6 +189,59 @@ void draw_metal_floor(float half_size, float y) {
 
 
 
+void draw_rect(float x, float y, float w, float h,
+               float r, float g, float b, float a) {
+    glColor4f(r, g, b, a);
+    glBegin(GL_QUADS);
+        glVertex2f(x,     y);
+        glVertex2f(x + w, y);
+        glVertex2f(x + w, y + h);
+        glVertex2f(x,     y + h);
+    glEnd();
+}
+
+void render_ui() {
+    if (menu_state == MenuState::NONE)
+        return;
+
+    // --- Save ALL relevant GL state ---
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, 1280, 720, 0, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    // --- Draw menu only (NO fullscreen overlay) ---
+    draw_rect(440, 220, 400, 280,
+              0.15f, 0.16f, 0.18f, 1.0f);
+
+    draw_rect(480, 300, 320, 50,
+              0.25f, 0.26f, 0.30f, 1.0f);
+
+    draw_rect(480, 370, 320, 50,
+              0.25f, 0.26f, 0.30f, 1.0f);
+
+    // --- Restore matrices ---
+    glPopMatrix(); // modelview
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+
+    // --- Restore ALL state ---
+    glPopAttrib();
+
+    glMatrixMode(GL_MODELVIEW);
+}
+
+
+
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* win = SDL_CreateWindow(
@@ -190,6 +250,7 @@ int main() {
         1280, 720, SDL_WINDOW_OPENGL
     );
     SDL_GLContext gl = SDL_GL_CreateContext(win);
+    glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     prev_pos_y   = pos_y;
     cam_y_smooth = pos_y;
@@ -204,8 +265,21 @@ int main() {
     while (running) {
         SDL_Event e;
         const Uint8* k = SDL_GetKeyboardState(nullptr);
-        while (SDL_PollEvent(&e))
-            if (e.type == SDL_QUIT) running = false;
+        while (SDL_PollEvent(&e)) {
+    if (e.type == SDL_QUIT)
+        running = false;
+
+    if (e.type == SDL_KEYUP &&
+    e.key.keysym.sym == SDLK_ESCAPE) {
+
+    if (menu_state == MenuState::NONE)
+        menu_state = MenuState::PAUSE;
+    else
+        menu_state = MenuState::NONE;
+}
+
+}
+
 
         float local_x = 0.0f;   // strafe right
 float local_z = 0.0f;   // forward
@@ -348,6 +422,10 @@ if (now - fps_timer >= 1000) {
                   "Drone – Sunset Sky | FPS: %.1f", fps);
     SDL_SetWindowTitle(win, title);
 }
+
+
+
+        render_ui();
 
         SDL_GL_SwapWindow(win);
         SDL_Delay(16);
