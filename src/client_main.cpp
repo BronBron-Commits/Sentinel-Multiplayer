@@ -5,6 +5,8 @@
 #include <SDL2/SDL_ttf.h>
 #include <string>
 
+static bool id_requested = false;
+
 static bool id_assigned = false;
 
 
@@ -24,17 +26,7 @@ static std::unordered_map<uint32_t, RemoteDrone> remote_drones;
 #endif
 
 
-#ifdef ENABLE_MULTIPLAYER
-#include <unordered_map>
 
-static uint32_t local_player_id = 0;
-
-struct RemoteGhost {
-    NetState state{};
-};
-
-static std::unordered_map<uint32_t, RemoteGhost> ghosts;
-#endif
 
 
 
@@ -768,6 +760,9 @@ void create_name_tag() {
     player_name_tag.h = surf->h;
 }
 
+#ifdef ENABLE_MULTIPLAYER
+static uint32_t local_player_id = 0;
+#endif
 
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
@@ -799,9 +794,7 @@ if (!ui_font) {
     #ifdef ENABLE_MULTIPLAYER
     net_init("127.0.0.1", 7777);
     #endif
-    #ifdef ENABLE_MULTIPLAYER
-    net_state.player_id = 0; // request ID assignment from server
-#endif
+    
 
 
     float rotor_angle = 0.0f;
@@ -966,41 +959,49 @@ vel_z += world_az * DT;
         pos_z += vel_z * DT;
         
         #ifdef ENABLE_MULTIPLAYER
-if (!id_assigned) {
-    net_state.player_id = 0; // request assignment ONCE
+if (!id_assigned && !id_requested) {
+    net_state.player_id = 0;   // request ID ONCE
+    id_requested = true;
 } else {
     net_state.player_id = local_player_id;
 }
 
-net_state.x = pos_x;
-net_state.y = pos_y;
-net_state.z = pos_z;
+net_state.x   = pos_x;
+net_state.y   = pos_y;
+net_state.z   = pos_z;
 net_state.yaw = yaw;
 
 net_send(net_state);
 #endif
 
+
 #ifdef ENABLE_MULTIPLAYER
 NetState incoming{};
 while (net_tick(incoming)) {
 
-    // First server response assigns our ID
-    if (!id_assigned && incoming.player_id != 0) {
+    // 1. Ignore invalid packets
+    if (incoming.player_id == 0)
+        continue;
+
+    // 2. First valid packet assigns OUR ID
+    if (!id_assigned) {
         local_player_id = incoming.player_id;
         id_assigned = true;
 
+        remote_drones.clear(); // 🔥 remove phantom
         std::printf("[client] assigned id=%u\n", local_player_id);
         continue;
     }
 
-    // Ignore our own echoed state
+    // 3. Ignore our own echoed state
     if (incoming.player_id == local_player_id)
         continue;
 
-    // Update / create remote drone
+    // 4. Legit remote player
     remote_drones[incoming.player_id].state = incoming;
 }
 #endif
+
 
 
 

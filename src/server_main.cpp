@@ -9,12 +9,25 @@
 
 static int sockfd = -1;
 
-struct Client {
-    sockaddr_in addr{};
-};
-
-static std::unordered_map<uint32_t, Client> clients;
+/*
+    We key clients by address (IP + port), not by player_id.
+    This prevents multiple IDs being assigned to the same client.
+*/
 static uint32_t next_player_id = 1;
+
+// addr_key -> player_id
+static std::unordered_map<uint64_t, uint32_t> addr_to_id;
+
+// player_id -> last known address
+static std::unordered_map<uint32_t, sockaddr_in> id_to_addr;
+
+// player_id -> last known state
+static std::unordered_map<uint32_t, NetState> players;
+
+static uint64_t addr_key(const sockaddr_in& a) {
+    // Combine IP and port into a stable 64-bit key
+    return (uint64_t(a.sin_addr.s_addr) << 16) | ntohs(a.sin_port);
+}
 
 int main() {
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -52,24 +65,35 @@ int main() {
         if (n <= 0)
             continue;
 
-        // Assign player ID if needed
-        if (state.player_id == 0) {
-            state.player_id = next_player_id++;
-            clients[state.player_id] = { from };
-            std::printf("[server] assigned id=%u\n", state.player_id);
-        } else {
-            clients[state.player_id] = { from };
+        uint64_t key = addr_key(from);
+
+        // Assign ID ONCE per address
+        if (!addr_to_id.count(key)) {
+            uint32_t id = next_player_id++;
+            addr_to_id[key] = id;
+            id_to_addr[id] = from;
+
+            std::printf("[server] assigned id=%u\n", id);
         }
 
-        // Broadcast this state to ALL clients
-        for (const auto& [id, client] : clients) {
+        uint32_t player_id = addr_to_id[key];
+
+        // Server is authoritative over player_id
+        state.player_id = player_id;
+
+        // Store last known state
+        players[player_id] = state;
+        id_to_addr[player_id] = from;
+
+        // Broadcast this state to all connected clients
+        for (const auto& [id, addr] : id_to_addr) {
             sendto(
                 sockfd,
                 &state,
                 sizeof(state),
                 0,
-                (sockaddr*)&client.addr,
-                sizeof(client.addr)
+                (const sockaddr*)&addr,
+                sizeof(addr)
             );
         }
     }
@@ -77,3 +101,4 @@ int main() {
     close(sockfd);
     return 0;
 }
+
