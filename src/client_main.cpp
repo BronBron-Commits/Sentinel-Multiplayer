@@ -5,11 +5,37 @@
 #include <SDL2/SDL_ttf.h>
 #include <string>
 
+static bool id_assigned = false;
+
 
 #ifdef ENABLE_MULTIPLAYER
 #include "net/net_api.hpp"
 static NetState net_state{};
 #endif
+
+#ifdef ENABLE_MULTIPLAYER
+#include <unordered_map>
+
+struct RemoteDrone {
+    NetState state;
+};
+
+static std::unordered_map<uint32_t, RemoteDrone> remote_drones;
+#endif
+
+
+#ifdef ENABLE_MULTIPLAYER
+#include <unordered_map>
+
+static uint32_t local_player_id = 0;
+
+struct RemoteGhost {
+    NetState state{};
+};
+
+static std::unordered_map<uint32_t, RemoteGhost> ghosts;
+#endif
+
 
 
 int win_w = 1280;
@@ -773,6 +799,9 @@ if (!ui_font) {
     #ifdef ENABLE_MULTIPLAYER
     net_init("127.0.0.1", 7777);
     #endif
+    #ifdef ENABLE_MULTIPLAYER
+    net_state.player_id = 0; // request ID assignment from server
+#endif
 
 
     float rotor_angle = 0.0f;
@@ -935,22 +964,48 @@ vel_z += world_az * DT;
         pos_x += vel_x * DT;
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
+        
         #ifdef ENABLE_MULTIPLAYER
+if (!id_assigned) {
+    net_state.player_id = 0; // request assignment ONCE
+} else {
+    net_state.player_id = local_player_id;
+}
+
 net_state.x = pos_x;
 net_state.y = pos_y;
 net_state.z = pos_z;
+net_state.yaw = yaw;
 
 net_send(net_state);
+#endif
 
-// If server sends authoritative correction later,
-// this will overwrite local state.
-if (net_tick(net_state)) {
-    pos_x = net_state.x;
-    pos_y = net_state.y;
-    pos_z = net_state.z;
+#ifdef ENABLE_MULTIPLAYER
+NetState incoming{};
+while (net_tick(incoming)) {
+
+    // First server response assigns our ID
+    if (!id_assigned && incoming.player_id != 0) {
+        local_player_id = incoming.player_id;
+        id_assigned = true;
+
+        std::printf("[client] assigned id=%u\n", local_player_id);
+        continue;
+    }
+
+    // Ignore our own echoed state
+    if (incoming.player_id == local_player_id)
+        continue;
+
+    // Update / create remote drone
+    remote_drones[incoming.player_id].state = incoming;
 }
 #endif
 
+
+
+        
+        
 
 // tilt is driven by INPUT ACCELERATION (not velocity)
 
@@ -1088,6 +1143,28 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
         draw_name_tag();
         draw_chat_billboard();
         glPopMatrix();
+        
+        
+        #ifdef ENABLE_MULTIPLAYER
+for (const auto& [id, remote] : remote_drones) {
+    const NetState& s = remote.state;
+
+    glPushMatrix();
+
+    glTranslatef(s.x, s.y, s.z);
+    glRotatef(-s.yaw, 0, 1, 0);
+
+    // Slight tint so ghosts are visually distinct
+    glColor3f(0.4f, 0.6f, 1.0f);
+
+    draw_drone(rotor_angle);
+    glColor3f(1.0f, 1.0f, 1.0f); // RESET STATE
+    glPopMatrix();
+}
+#endif
+
+
+        
         // ---- FPS tracking ----
 Uint32 now = SDL_GetTicks();
 frames++;

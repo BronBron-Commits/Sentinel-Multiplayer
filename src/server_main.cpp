@@ -1,36 +1,79 @@
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <unordered_map>
+#include <arpa/inet.h>
+#include <unistd.h>
+
 #include "net/net_api.hpp"
 
-#include <cstdio>
-#include <chrono>
-#include <thread>
+static int sockfd = -1;
 
-static NetState auth_state{};
+struct Client {
+    sockaddr_in addr{};
+};
+
+static std::unordered_map<uint32_t, Client> clients;
+static uint32_t next_player_id = 1;
 
 int main() {
-    std::printf("[server] starting drone-server on 0.0.0.0:7777\n");
-
-    if (!net_init("0.0.0.0", 7777)) {
-        std::fprintf(stderr, "[server] net_init failed\n");
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket");
         return 1;
     }
 
-    constexpr float DT = 1.0f / 60.0f;
+    sockaddr_in server{};
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(7777);
 
-    while (true) {
-        // Receive latest client state (temporary authority handoff)
-        NetState incoming{};
-        if (net_tick(incoming)) {
-            auth_state = incoming; // authoritative overwrite
-        }
-
-        // Broadcast authoritative state back
-        net_send(auth_state);
-
-        std::this_thread::sleep_for(
-            std::chrono::duration<float>(DT)
-        );
+    if (bind(sockfd, (sockaddr*)&server, sizeof(server)) < 0) {
+        perror("bind");
+        return 1;
     }
 
-    net_shutdown();
+    std::printf("[server] starting drone-server on 0.0.0.0:7777\n");
+
+    while (true) {
+        NetState state{};
+        sockaddr_in from{};
+        socklen_t from_len = sizeof(from);
+
+        ssize_t n = recvfrom(
+            sockfd,
+            &state,
+            sizeof(state),
+            0,
+            (sockaddr*)&from,
+            &from_len
+        );
+
+        if (n <= 0)
+            continue;
+
+        // Assign player ID if needed
+        if (state.player_id == 0) {
+            state.player_id = next_player_id++;
+            clients[state.player_id] = { from };
+            std::printf("[server] assigned id=%u\n", state.player_id);
+        } else {
+            clients[state.player_id] = { from };
+        }
+
+        // Broadcast this state to ALL clients
+        for (const auto& [id, client] : clients) {
+            sendto(
+                sockfd,
+                &state,
+                sizeof(state),
+                0,
+                (sockaddr*)&client.addr,
+                sizeof(client.addr)
+            );
+        }
+    }
+
+    close(sockfd);
     return 0;
 }
