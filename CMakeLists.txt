@@ -10,16 +10,26 @@ pkg_check_modules(SDL2_TTF REQUIRED SDL2_ttf)
 
 add_executable(drone-client
     src/client_main.cpp
+    src/net/net_stub.cpp
 )
 
+
 target_include_directories(drone-client PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
     ${SDL2_INCLUDE_DIRS}
     ${SDL2_TTF_INCLUDE_DIRS}
 )
+
 
 target_link_libraries(drone-client
     ${SDL2_LIBRARIES}
     ${SDL2_TTF_LIBRARIES}
     GL
 )
+
+option(ENABLE_MULTIPLAYER "Enable multiplayer networking" ON)
+
+if(ENABLE_MULTIPLAYER)
+    add_compile_definitions(ENABLE_MULTIPLAYER)
+endif()
 

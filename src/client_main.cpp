@@ -6,6 +6,12 @@
 #include <string>
 
 
+#ifdef ENABLE_MULTIPLAYER
+#include "net/net_api.hpp"
+static NetState net_state{};
+#endif
+
+
 int win_w = 1280;
 int win_h = 720;
 
@@ -764,6 +770,10 @@ if (!ui_font) {
     glEnable(GL_DEPTH_TEST);
     prev_pos_y   = pos_y;
     cam_y_smooth = pos_y;
+    #ifdef ENABLE_MULTIPLAYER
+    net_init("127.0.0.1", 7777);
+    #endif
+
 
     float rotor_angle = 0.0f;
     bool running = true;
@@ -925,6 +935,22 @@ vel_z += world_az * DT;
         pos_x += vel_x * DT;
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
+        #ifdef ENABLE_MULTIPLAYER
+net_state.x = pos_x;
+net_state.y = pos_y;
+net_state.z = pos_z;
+
+net_send(net_state);
+
+// If server sends authoritative correction later,
+// this will overwrite local state.
+if (net_tick(net_state)) {
+    pos_x = net_state.x;
+    pos_y = net_state.y;
+    pos_z = net_state.z;
+}
+#endif
+
 
 // tilt is driven by INPUT ACCELERATION (not velocity)
 
@@ -1093,7 +1119,10 @@ SDL_Delay(16);
 
 
 }
-    
+    #ifdef ENABLE_MULTIPLAYER
+net_shutdown();
+#endif
+   
     TTF_CloseFont(ui_font);
     TTF_Quit();
 
