@@ -158,7 +158,7 @@ static constexpr float CAM_Y_FOLLOW_GAIN = 0.35f;   // < 1.0 = slower than drone
 static constexpr float CAM_Y_MAX_SPEED   = 6.0f;    // units per second
 // -------- Idle bob (visual only) --------
 static constexpr float IDLE_BOB_AMPLITUDE = 0.12f;
-static constexpr float IDLE_BOB_SPEED     = 1.6f;   // cycles per second
+static constexpr float IDLE_BOB_SPEED     = .45f;   // cycles per second
 
 
 
