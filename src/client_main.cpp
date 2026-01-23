@@ -962,10 +962,18 @@ if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) {
         chat_typing = false;
         if (!chat_buffer.empty()) {
         
-    create_chat_message(chat_buffer.c_str());
     std::string full_msg = player_name + ": " + chat_buffer;
 
-    push_chat_history(full_msg.c_str());
+// local echo
+push_chat_history(full_msg.c_str());
+
+// send once
+#ifdef ENABLE_MULTIPLAYER
+std::snprintf(net_state.chat, NET_CHAT_MAX, "%s", full_msg.c_str());
+net_send(net_state);
+net_state.chat[0] = '\0';   // IMPORTANT: clear after send
+#endif
+
 }
 
 
@@ -1076,15 +1084,25 @@ while (net_tick(incoming)) {
         continue;
 
     // Accept ID assignment ONLY while awaiting it
-if (awaiting_id && incoming.player_id != 0) {
-    local_player_id = incoming.player_id;
-    id_assigned = true;
-    awaiting_id = false;
+    if (awaiting_id && incoming.player_id != 0) {
+        local_player_id = incoming.player_id;
+        id_assigned = true;
+        awaiting_id = false;
 
-    std::printf("[client] assigned id=%u\n", local_player_id);
-    continue;
-}
+        std::printf("[client] assigned id=%u\n", local_player_id);
+        continue;
+    }
 
+    // 🔹 GLOBAL CHAT RECEIVE 🔹
+    if (incoming.chat[0] != '\0') {
+
+        // Ignore our own echoed message
+        if (incoming.player_id != local_player_id) {
+            push_chat_history(incoming.chat);
+        }
+
+        continue; // chat-only packet
+    }
 
     // Ignore our own echoed state
     if (incoming.player_id == local_player_id)
@@ -1094,12 +1112,9 @@ if (awaiting_id && incoming.player_id != 0) {
     d.state = incoming;
 
     if (!d.name_initialized && incoming.name[0] != '\0') {
-    create_remote_name_tag(d);
-    d.name_initialized = true;
-}
-
-    
-
+        create_remote_name_tag(d);
+        d.name_initialized = true;
+    }
 }
 #endif
 
