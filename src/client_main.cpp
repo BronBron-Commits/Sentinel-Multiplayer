@@ -272,41 +272,28 @@ void draw_drone(float rotor_angle) {
 }
 
 void draw_name_tag() {
-    if (!player_name_tag.texture)
-        return;
+    if (!player_name_tag.texture) return;
 
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, player_name_tag.texture);
-
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glColor4f(1, 1, 1, 1);
-
-    glPushMatrix();
-
-    // Slightly above chat bubble
-    glTranslatef(0.0f, 1.75f, 0.0f);
-
-    // Billboard: cancel yaw
-    glRotatef(2.0f * yaw, 0, 1, 0);
 
     float s = 0.010f;
     float w = player_name_tag.w * s;
     float h = player_name_tag.h * s;
 
     glBegin(GL_QUADS);
-        glTexCoord2f(0, 1); glVertex3f(-w * 0.5f, 0, 0);
-        glTexCoord2f(1, 1); glVertex3f( w * 0.5f, 0, 0);
-        glTexCoord2f(1, 0); glVertex3f( w * 0.5f, h, 0);
-        glTexCoord2f(0, 0); glVertex3f(-w * 0.5f, h, 0);
+        glTexCoord2f(0,1); glVertex3f(-w*0.5f, 0, 0);
+        glTexCoord2f(1,1); glVertex3f( w*0.5f, 0, 0);
+        glTexCoord2f(1,0); glVertex3f( w*0.5f, h, 0);
+        glTexCoord2f(0,0); glVertex3f(-w*0.5f, h, 0);
     glEnd();
-
-    glPopMatrix();
 
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
 }
+
 
 
 void draw_chat_billboard() {
@@ -329,8 +316,8 @@ void draw_chat_billboard() {
     // Position above drone (LOCAL SPACE)
     glTranslatef(0.0f, 1.35f, 0.0f);
 
-    // Billboard: cancel drone yaw, then face camera
-    glRotatef(2.0f * yaw, 0, 1, 0);
+    glRotatef(yaw, 0, 1, 0);
+
 
     float s = 0.012f;
     float w = active_chat.w * s;
@@ -825,31 +812,31 @@ void draw_remote_name_tag(const RemoteDrone& d) {
 
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, d.name_tag->texture);
-
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glColor4f(1, 1, 1, 1);
-
+    glColor4f(1,1,1,1);
     glPushMatrix();
+
     glTranslatef(0.0f, 1.75f, 0.0f);
+    glRotatef(yaw, 0, 1, 0);   // ✅ LOCAL camera yaw
 
     float s = 0.010f;
     float w = d.name_tag->w * s;
     float h = d.name_tag->h * s;
 
     glBegin(GL_QUADS);
-        glTexCoord2f(0, 1); glVertex3f(-w * 0.5f, 0, 0);
-        glTexCoord2f(1, 1); glVertex3f( w * 0.5f, 0, 0);
-        glTexCoord2f(1, 0); glVertex3f( w * 0.5f, h, 0);
-        glTexCoord2f(0, 0); glVertex3f(-w * 0.5f, h, 0);
+        glTexCoord2f(0,1); glVertex3f(-w*0.5f, 0, 0);
+        glTexCoord2f(1,1); glVertex3f( w*0.5f, 0, 0);
+        glTexCoord2f(1,0); glVertex3f( w*0.5f, h, 0);
+        glTexCoord2f(0,0); glVertex3f(-w*0.5f, h, 0);
     glEnd();
 
     glPopMatrix();
-
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
 }
+
 
 #endif
 
@@ -1249,16 +1236,22 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
 
         draw_grid(200.0f, 5.0f);
 
-        glPushMatrix();
-        glTranslatef(pos_x, pos_y, pos_z);
-        glRotatef(-yaw, 0, 1, 0);
-        glRotatef(roll,  0, 0, 1);
-        glRotatef(pitch, 1, 0, 0);
-        draw_drone(rotor_angle);
-        draw_name_tag();
-        draw_chat_billboard();
-        glPopMatrix();
-        
+        // Drone
+glPushMatrix();
+glTranslatef(pos_x, pos_y, pos_z);
+glRotatef(-yaw, 0, 1, 0);
+glRotatef(roll,  0, 0, 1);
+glRotatef(pitch, 1, 0, 0);
+draw_drone(rotor_angle);
+glPopMatrix();
+
+// Name tag (WORLD-SPACE BILLBOARD)
+glPushMatrix();
+glTranslatef(pos_x, pos_y + 1.75f, pos_z);
+glRotatef(yaw, 0, 1, 0);   // face camera
+draw_name_tag();
+glPopMatrix();
+
         
         #ifdef ENABLE_MULTIPLAYER
 for (const auto& [id, remote] : remote_drones) {
