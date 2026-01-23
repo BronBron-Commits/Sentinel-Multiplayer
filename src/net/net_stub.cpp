@@ -1,171 +1,53 @@
+// src/net/net_stub.cpp
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <queue>
+
 #include "net/net_api.hpp"
 #include "net/net_event.hpp"
 
-#include <cstring>
-#include <cstdio>
-#include <queue>
-
 // ------------------------------------------------------------
-// Platform sockets
+// Simple in-process stub (Windows / client-side)
 // ------------------------------------------------------------
 
-#ifdef _WIN32
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #pragma comment(lib, "ws2_32.lib")
-    using socklen_t = int;
-#else
-    #include <sys/socket.h>
-    #include <arpa/inet.h>
-    #include <unistd.h>
-#endif
+static std::queue<NetState> g_state_queue;
+static std::queue<NetEvent> g_event_queue;
 
-// ------------------------------------------------------------
-// Socket state
-// ------------------------------------------------------------
-
-static int sock_fd = -1;
-static sockaddr_in peer_addr{};
-static sockaddr_in last_sender{};
-static socklen_t last_sender_len = sizeof(last_sender);
-static bool has_peer = false;
-
-// ------------------------------------------------------------
-// EVENT QUEUE (local stub delivery)
-// ------------------------------------------------------------
-
-static std::queue<NetEvent> event_queue;
-
-// ------------------------------------------------------------
-// INIT / SHUTDOWN
-// ------------------------------------------------------------
-
-bool net_init(const char* addr, uint16_t port) {
-
-#ifdef _WIN32
-    WSADATA wsa{};
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        std::fprintf(stderr, "WSAStartup failed\n");
-        return false;
-    }
-#endif
-
-    sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock_fd < 0) {
-        perror("socket");
-        return false;
-    }
-
-    sockaddr_in local{};
-    local.sin_family = AF_INET;
-    local.sin_addr.s_addr = INADDR_ANY;
-
-    // Client: bind ephemeral port
-    // Server: bind fixed port
-    uint16_t bind_port =
-        (std::strcmp(addr, "0.0.0.0") == 0) ? port : 0;
-
-    local.sin_port = htons(bind_port);
-
-    if (bind(sock_fd, (sockaddr*)&local, sizeof(local)) < 0) {
-        perror("bind");
-
-#ifdef _WIN32
-        closesocket(sock_fd);
-        WSACleanup();
-#else
-        close(sock_fd);
-#endif
-        sock_fd = -1;
-        return false;
-    }
-
-    peer_addr.sin_family = AF_INET;
-    peer_addr.sin_port = htons(port);
-    inet_pton(AF_INET, addr, &peer_addr.sin_addr);
-
-    has_peer = false;
+bool net_init(const char* host, uint16_t port) {
+    std::printf("[net] stub init %s:%u\n", host, port);
     return true;
 }
 
 void net_shutdown() {
-    if (sock_fd >= 0) {
-#ifdef _WIN32
-        closesocket(sock_fd);
-        WSACleanup();
-#else
-        close(sock_fd);
-#endif
-        sock_fd = -1;
-    }
+    while (!g_state_queue.empty()) g_state_queue.pop();
+    while (!g_event_queue.empty()) g_event_queue.pop();
 }
 
-// ------------------------------------------------------------
-// STATE SYNC
-// ------------------------------------------------------------
-
 bool net_send(const NetState& state) {
-    if (sock_fd < 0)
-        return false;
-
-    ssize_t sent = sendto(
-        sock_fd,
-        (const char*)&state,
-        sizeof(NetState),
-        0,
-        (sockaddr*)&peer_addr,
-        sizeof(peer_addr)
-    );
-
-    return sent == sizeof(NetState);
+    g_state_queue.push(state);
+    return true;
 }
 
 bool net_tick(NetState& out) {
-    sockaddr_in from{};
-    socklen_t from_len = sizeof(from);
+    if (g_state_queue.empty())
+        return false;
 
-    ssize_t r = recvfrom(
-        sock_fd,
-        &out,
-        sizeof(NetState),
-        MSG_DONTWAIT,
-        (sockaddr*)&from,
-        &from_len
-    );
-
-    if (r == sizeof(NetState)) {
-
-        // 🔴 THIS IS THE LINE YOU COULD NOT FIND
-        if (!has_peer) {
-            peer_addr = from;
-            has_peer = true;
-            std::printf("[net] learned peer address\n");
-        }
-
-        return true;
-    }
-
-    return false;
+    out = g_state_queue.front();
+    g_state_queue.pop();
+    return true;
 }
 
-
-// ------------------------------------------------------------
-// EVENT API (STUB IMPLEMENTATION)
-// ------------------------------------------------------------
-
-bool net_send_event(const NetEvent& e) {
-    // Stub behavior:
-    // Immediately deliver locally (single-process testing)
-    event_queue.push(e);
+bool net_send_event(const NetEvent& ev) {
+    g_event_queue.push(ev);
     return true;
 }
 
 bool net_tick_event(NetEvent& out_event) {
-    if (event_queue.empty())
+    if (g_event_queue.empty())
         return false;
 
-    out_event = event_queue.front();
-    event_queue.pop();
+    out_event = g_event_queue.front();
+    g_event_queue.pop();
     return true;
 }
-

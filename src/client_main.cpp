@@ -1,11 +1,27 @@
-#include <SDL2/SDL.h>
+#define SDL_MAIN_HANDLED
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
 #include <GL/gl.h>
+
+
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+
 #include <cmath>
 #include <cstdio>
-#include <SDL2/SDL_ttf.h>
 #include <string>
-#include "net/net_event.hpp"
 #include "firework.hpp"
+
+#ifndef GL_BGRA
+#define GL_BGRA 0x80E1
+#endif
+
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+
 
 static bool chat_pending = false;
 
@@ -147,7 +163,7 @@ static float prev_pos_y = 0.0f;
 
 
 // -------- Tuning --------
-static constexpr float ACCEL        = 65.0f;
+static constexpr float DRONE_ACCEL        = 65.0f;
 static constexpr float DRAG         = 0.97f;
 static constexpr float TILT_FACTOR  = 9.0f;
 static constexpr float TILT_RETURN  = 0.86f;
@@ -1073,13 +1089,13 @@ if (!chat_typing &&
     !entering_name &&
     menu_state == MenuState::NONE) {
 
-    if (k[SDL_SCANCODE_LEFT])  local_x -= ACCEL;
-    if (k[SDL_SCANCODE_RIGHT]) local_x += ACCEL;
-    if (k[SDL_SCANCODE_UP])    local_z -= ACCEL;
-    if (k[SDL_SCANCODE_DOWN])  local_z += ACCEL;
+    if (k[SDL_SCANCODE_LEFT])  local_x -= DRONE_ACCEL;
+    if (k[SDL_SCANCODE_RIGHT]) local_x += DRONE_ACCEL;
+    if (k[SDL_SCANCODE_UP])    local_z -= DRONE_ACCEL;
+    if (k[SDL_SCANCODE_DOWN])  local_z += DRONE_ACCEL;
 
-    if (k[SDL_SCANCODE_W]) ay += ACCEL;
-    if (k[SDL_SCANCODE_S]) ay -= ACCEL;
+    if (k[SDL_SCANCODE_W]) ay += DRONE_ACCEL;
+    if (k[SDL_SCANCODE_S]) ay -= DRONE_ACCEL;
 
     if (k[SDL_SCANCODE_A]) yaw += YAW_SPEED * DT;
     if (k[SDL_SCANCODE_D]) yaw -= YAW_SPEED * DT;
@@ -1142,6 +1158,7 @@ while (net_tick(incoming)) {
     if (incoming.player_id == 0)
         continue;
         
+// ---- ID assignment packet (DO NOT create remote) ----
 if (local_player_id == 0 && incoming.player_id != 0) {
     local_player_id = incoming.player_id;
 
@@ -1150,9 +1167,13 @@ if (local_player_id == 0 && incoming.player_id != 0) {
         push_chat_history("[system] Connected to server");
     }
 
-    std::printf("[client] assigned id=%u\n", local_player_id);
-    continue;
+    continue; // 🚫 never process as remote
 }
+
+// ---- Ignore our own echoed packets ----
+if (incoming.player_id == local_player_id)
+    continue;
+
 
 
 

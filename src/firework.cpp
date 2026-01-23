@@ -1,9 +1,21 @@
-#include "firework.hpp"
-#include <vector>
-#include <cstdlib>
-#include <cmath>
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
 #include <GL/gl.h>
-#include <algorithm>   // ✅ REQUIRED for std::remove_if
+
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <cstdlib>
+
+
+// ✅ REQUIRED for std::remove_if
 
 // ------------------------------------------------------------
 // Simple firework particle stub
