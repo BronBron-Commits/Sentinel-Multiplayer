@@ -12,16 +12,15 @@ constexpr size_t NET_CHAT_MAX = 256;
 struct NetState {
     uint32_t player_id;
 
-    // transform
     float x;
     float y;
     float z;
+
     float yaw;
+    float pitch;   // 🔹 ADD
+    float roll;    // 🔹 ADD
 
-    // identity (optional / sparse)
     char name[NET_NAME_MAX];
-
-    // 🔹 GLOBAL CHAT (optional / sparse)
     char chat[NET_CHAT_MAX];
 };
 

@@ -20,6 +20,12 @@ static NetState net_state{};
 #endif
 
 #ifdef ENABLE_MULTIPLAYER
+static float net_send_accum = 0.0f;
+static constexpr float NET_SEND_RATE = 1.0f / 20.0f; // 20 Hz
+#endif
+
+
+#ifdef ENABLE_MULTIPLAYER
 #include <unordered_map>
 
 struct NameTag; // forward declaration
@@ -28,7 +34,9 @@ struct RemoteDrone {
     NetState state;
     bool name_initialized = false;
     NameTag* name_tag = nullptr;
+    float last_seen = 0.0f;   // 🔹 seconds since last packet
 };
+
 
 static std::unordered_map<uint32_t, RemoteDrone> remote_drones;
 #endif
@@ -872,6 +880,7 @@ if (!ui_font) {
     glEnable(GL_DEPTH_TEST);
     prev_pos_y   = pos_y;
     cam_y_smooth = pos_y;
+    float sim_time = 0.0f;
     #ifdef ENABLE_MULTIPLAYER
     net_init("127.0.0.1", 7777);
     #endif
@@ -970,7 +979,12 @@ push_chat_history(full_msg.c_str());
 // send once
 #ifdef ENABLE_MULTIPLAYER
 std::snprintf(net_state.chat, NET_CHAT_MAX, "%s", full_msg.c_str());
-net_send(net_state);
+net_send_accum += DT;
+if (net_send_accum >= NET_SEND_RATE) {
+    net_send(net_state);
+    net_send_accum = 0.0f;
+}
+
 net_state.chat[0] = '\0';   // IMPORTANT: clear after send
 #endif
 
@@ -1000,6 +1014,9 @@ if (chat_typing &&
 }
 
 }   // <-- CLOSE while (SDL_PollEvent)
+
+sim_time += DT;
+
 
 // ================== GAME UPDATE ==================
 float local_x = 0.0f;
@@ -1064,15 +1081,22 @@ if (!id_assigned && !id_requested) {
     net_state.player_id = local_player_id;
 }
 
-net_state.x   = pos_x;
-net_state.y   = pos_y;
-net_state.z   = pos_z;
-net_state.yaw = yaw;
+net_state.x     = pos_x;
+net_state.y     = pos_y;
+net_state.z     = pos_z;
+net_state.yaw   = yaw;
+net_state.pitch = pitch;   // 🔹 ADD
+net_state.roll  = roll;    // 🔹 ADD
+
+net_send_accum += DT;
+if (net_send_accum >= NET_SEND_RATE) {
+    net_send(net_state);
+    net_send_accum = 0.0f;
+}
 
 
 
 
-net_send(net_state);
 #endif
 
 
@@ -1109,7 +1133,9 @@ while (net_tick(incoming)) {
         continue;
 
     RemoteDrone& d = remote_drones[incoming.player_id];
-    d.state = incoming;
+d.state = incoming;
+d.last_seen = sim_time;   // 🔹 mark alive
+
 
     if (!d.name_initialized && incoming.name[0] != '\0') {
         create_remote_name_tag(d);
@@ -1119,6 +1145,27 @@ while (net_tick(incoming)) {
 #endif
 
 
+#ifdef ENABLE_MULTIPLAYER
+static constexpr float NET_TIMEOUT = 5.0f; // seconds
+
+for (auto it = remote_drones.begin(); it != remote_drones.end(); ) {
+    RemoteDrone& d = it->second;
+
+    if ((sim_time - d.last_seen) > NET_TIMEOUT) {
+
+        if (d.name_tag) {
+            if (d.name_tag->texture)
+                glDeleteTextures(1, &d.name_tag->texture);
+            delete d.name_tag;
+        }
+
+        std::printf("[net] player %u timed out\n", it->first);
+        it = remote_drones.erase(it);
+    } else {
+        ++it;
+    }
+}
+#endif
 
 
         
@@ -1272,14 +1319,24 @@ glPopMatrix();
 for (const auto& [id, remote] : remote_drones) {
     const NetState& s = remote.state;
 
-    glPushMatrix();
-    glTranslatef(s.x, s.y, s.z);
-    glRotatef(-s.yaw, 0, 1, 0);
+glPushMatrix();
+glTranslatef(s.x, s.y, s.z);
 
-    // tint so remotes are distinct
-    glColor3f(0.4f, 0.6f, 1.0f);
-    draw_drone(rotor_angle);
-    glColor3f(1.0f, 1.0f, 1.0f);
+// yaw first (world-space heading)
+glRotatef(-s.yaw, 0, 1, 0);
+
+// roll around forward axis
+glRotatef(s.roll,  0, 0, 1);
+
+// pitch around local X
+glRotatef(s.pitch, 1, 0, 0);
+
+// tint so remotes are distinct
+glColor3f(0.4f, 0.6f, 1.0f);
+draw_drone(rotor_angle);
+glColor3f(1.0f, 1.0f, 1.0f);
+
+glPopMatrix();
 
     // 🔹 THIS IS THE IMPORTANT PART 🔹
     if (remote.name_initialized) {
