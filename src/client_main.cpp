@@ -5,6 +5,10 @@
 #include <SDL2/SDL_ttf.h>
 #include <string>
 
+static bool name_confirmed = false;
+
+static bool awaiting_id = true;
+
 static bool id_requested = false;
 
 static bool id_assigned = false;
@@ -18,12 +22,17 @@ static NetState net_state{};
 #ifdef ENABLE_MULTIPLAYER
 #include <unordered_map>
 
+struct NameTag; // forward declaration
+
 struct RemoteDrone {
     NetState state;
+    bool name_initialized = false;
+    NameTag* name_tag = nullptr;
 };
 
 static std::unordered_map<uint32_t, RemoteDrone> remote_drones;
 #endif
+
 
 
 
@@ -137,6 +146,11 @@ static constexpr float YAW_SPEED = 90.0f; // deg/sec
 static constexpr float CAM_Y_LAG = 0.08f;
 static constexpr float CAM_Y_FOLLOW_GAIN = 0.35f;   // < 1.0 = slower than drone
 static constexpr float CAM_Y_MAX_SPEED   = 6.0f;    // units per second
+
+#ifdef ENABLE_MULTIPLAYER
+void create_remote_name_tag(RemoteDrone& d);
+void draw_remote_name_tag(const RemoteDrone& d);
+#endif
 
 void draw_text(int x, int y, const char* text);
 void draw_button_label(int bx, int by, int bw, int bh, const char* label);
@@ -761,6 +775,86 @@ void create_name_tag() {
 }
 
 #ifdef ENABLE_MULTIPLAYER
+
+void create_remote_name_tag(RemoteDrone& d) {
+    if (d.name_tag)
+        return;
+
+    d.name_tag = new NameTag{};
+
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Surface* surf =
+        TTF_RenderUTF8_Blended(ui_font, d.state.name, white);
+
+    if (!surf)
+        return;
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    PixelStoreGuard ps;
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, surf->pitch / 4);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        surf->w,
+        surf->h,
+        0,
+        GL_BGRA,
+        GL_UNSIGNED_BYTE,
+        surf->pixels
+    );
+
+    d.name_tag->texture = tex;
+    d.name_tag->w = surf->w;
+    d.name_tag->h = surf->h;
+
+    SDL_FreeSurface(surf);
+}
+
+void draw_remote_name_tag(const RemoteDrone& d) {
+    if (!d.name_tag || !d.name_tag->texture)
+        return;
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, d.name_tag->texture);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glColor4f(1, 1, 1, 1);
+
+    glPushMatrix();
+    glTranslatef(0.0f, 1.75f, 0.0f);
+
+    float s = 0.010f;
+    float w = d.name_tag->w * s;
+    float h = d.name_tag->h * s;
+
+    glBegin(GL_QUADS);
+        glTexCoord2f(0, 1); glVertex3f(-w * 0.5f, 0, 0);
+        glTexCoord2f(1, 1); glVertex3f( w * 0.5f, 0, 0);
+        glTexCoord2f(1, 0); glVertex3f( w * 0.5f, h, 0);
+        glTexCoord2f(0, 0); glVertex3f(-w * 0.5f, h, 0);
+    glEnd();
+
+    glPopMatrix();
+
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+}
+
+#endif
+
+
+#ifdef ENABLE_MULTIPLAYER
 static uint32_t local_player_id = 0;
 #endif
 
@@ -958,6 +1052,15 @@ vel_z += world_az * DT;
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
         
+if (id_assigned) {
+    std::snprintf(net_state.name, NET_NAME_MAX, "%s", player_name.c_str());
+} else {
+    net_state.name[0] = '\0';
+}
+
+
+
+        
         #ifdef ENABLE_MULTIPLAYER
 if (!id_assigned && !id_requested) {
     net_state.player_id = 0;   // request ID ONCE
@@ -971,6 +1074,9 @@ net_state.y   = pos_y;
 net_state.z   = pos_z;
 net_state.yaw = yaw;
 
+
+
+
 net_send(net_state);
 #endif
 
@@ -979,26 +1085,34 @@ net_send(net_state);
 NetState incoming{};
 while (net_tick(incoming)) {
 
-    // 1. Ignore invalid packets
     if (incoming.player_id == 0)
         continue;
 
-    // 2. First valid packet assigns OUR ID
-    if (!id_assigned) {
-        local_player_id = incoming.player_id;
-        id_assigned = true;
+    // Accept ID assignment ONLY while awaiting it
+if (awaiting_id && incoming.player_id != 0) {
+    local_player_id = incoming.player_id;
+    id_assigned = true;
+    awaiting_id = false;
 
-        remote_drones.clear(); // 🔥 remove phantom
-        std::printf("[client] assigned id=%u\n", local_player_id);
-        continue;
-    }
+    std::printf("[client] assigned id=%u\n", local_player_id);
+    continue;
+}
 
-    // 3. Ignore our own echoed state
+
+    // Ignore our own echoed state
     if (incoming.player_id == local_player_id)
         continue;
 
-    // 4. Legit remote player
-    remote_drones[incoming.player_id].state = incoming;
+    RemoteDrone& d = remote_drones[incoming.player_id];
+    d.state = incoming;
+
+    if (!d.name_initialized && incoming.name[0] != '\0') {
+    create_remote_name_tag(d);
+    d.name_initialized = true;
+}
+
+    
+
 }
 #endif
 
@@ -1151,15 +1265,19 @@ for (const auto& [id, remote] : remote_drones) {
     const NetState& s = remote.state;
 
     glPushMatrix();
-
     glTranslatef(s.x, s.y, s.z);
     glRotatef(-s.yaw, 0, 1, 0);
 
-    // Slight tint so ghosts are visually distinct
+    // tint so remotes are distinct
     glColor3f(0.4f, 0.6f, 1.0f);
-
     draw_drone(rotor_angle);
-    glColor3f(1.0f, 1.0f, 1.0f); // RESET STATE
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    // 🔹 THIS IS THE IMPORTANT PART 🔹
+    if (remote.name_initialized) {
+        draw_remote_name_tag(remote);
+    }
+
     glPopMatrix();
 }
 #endif
