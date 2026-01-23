@@ -873,10 +873,8 @@ void draw_remote_name_tag(const RemoteDrone& d) {
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
-    ui_font = TTF_OpenFont(
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    20
-);
+    ui_font = TTF_OpenFont("assets/fonts/DejaVuSans-Bold.ttf", 20);
+
 
 if (!ui_font) {
     std::fprintf(stderr, "TTF_OpenFont failed\n");
