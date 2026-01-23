@@ -1,10 +1,16 @@
 #include "net/net_api.hpp"
+#include "net/net_event.hpp"
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
 #include <cstdio>
+#include <queue>
+
+// ------------------------------------------------------------
+// Socket state
+// ------------------------------------------------------------
 
 static int sock_fd = -1;
 static sockaddr_in peer_addr{};
@@ -12,6 +18,15 @@ static sockaddr_in last_sender{};
 static socklen_t last_sender_len = sizeof(last_sender);
 static bool has_peer = false;
 
+// ------------------------------------------------------------
+// EVENT QUEUE (stubbed local delivery)
+// ------------------------------------------------------------
+
+static std::queue<NetEvent> event_queue;
+
+// ------------------------------------------------------------
+// INIT / SHUTDOWN
+// ------------------------------------------------------------
 
 bool net_init(const char* addr, uint16_t port) {
     sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -21,25 +36,22 @@ bool net_init(const char* addr, uint16_t port) {
     }
 
     sockaddr_in local{};
-local.sin_family = AF_INET;
-local.sin_addr.s_addr = INADDR_ANY;
+    local.sin_family = AF_INET;
+    local.sin_addr.s_addr = INADDR_ANY;
 
-/*
- * Client: bind to ephemeral port (0)
- * Server: bind to fixed port
- */
-uint16_t bind_port =
-    (std::strcmp(addr, "0.0.0.0") == 0) ? port : 0;
+    // Client: bind ephemeral port
+    // Server: bind fixed port
+    uint16_t bind_port =
+        (std::strcmp(addr, "0.0.0.0") == 0) ? port : 0;
 
-local.sin_port = htons(bind_port);
+    local.sin_port = htons(bind_port);
 
-if (bind(sock_fd, (sockaddr*)&local, sizeof(local)) < 0) {
-    perror("bind");
-    close(sock_fd);
-    sock_fd = -1;
-    return false;
-}
-
+    if (bind(sock_fd, (sockaddr*)&local, sizeof(local)) < 0) {
+        perror("bind");
+        close(sock_fd);
+        sock_fd = -1;
+        return false;
+    }
 
     peer_addr.sin_family = AF_INET;
     peer_addr.sin_port = htons(port);
@@ -49,13 +61,16 @@ if (bind(sock_fd, (sockaddr*)&local, sizeof(local)) < 0) {
     return true;
 }
 
-
 void net_shutdown() {
     if (sock_fd >= 0) {
         close(sock_fd);
         sock_fd = -1;
     }
 }
+
+// ------------------------------------------------------------
+// STATE SYNC
+// ------------------------------------------------------------
 
 bool net_send(const NetState& state) {
     if (sock_fd < 0)
@@ -94,5 +109,25 @@ bool net_tick(NetState& out_state) {
     }
 
     return false;
+}
+
+// ------------------------------------------------------------
+// EVENT API (STUB IMPLEMENTATION)
+// ------------------------------------------------------------
+
+bool net_send_event(const NetEvent& e) {
+    // Stub behavior:
+    // Push event locally so client immediately receives it.
+    event_queue.push(e);
+    return true;
+}
+
+bool net_tick_event(NetEvent& out_event) {
+    if (event_queue.empty())
+        return false;
+
+    out_event = event_queue.front();
+    event_queue.pop();
+    return true;
 }
 

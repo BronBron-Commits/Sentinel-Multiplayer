@@ -26,6 +26,7 @@ endif()
 add_executable(drone-client
     src/client_main.cpp
     src/net/net_stub.cpp
+    src/firework.cpp          # 🔥 REQUIRED
 )
 
 target_include_directories(drone-client PRIVATE

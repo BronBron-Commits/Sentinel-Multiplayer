@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <SDL2/SDL_ttf.h>
 #include <string>
+#include "net/net_event.hpp"
+#include "firework.hpp"
 
 static bool name_confirmed = false;
 
@@ -962,6 +964,23 @@ if (entering_name) {
         }
     }
     
+
+// ---------------- TEMP FIREWORK TRIGGER ----------------
+if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_f) {
+
+#ifdef ENABLE_MULTIPLAYER
+    NetEvent ev{};
+    ev.type = NetEventType::FIREWORK_LAUNCH;
+    ev.x = pos_x;
+    ev.y = 0.0f;
+    ev.z = pos_z;
+    ev.seed = SDL_GetTicks();
+    net_send_event(ev);
+#endif
+}
+
+
+
     // Start / send chat
 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RETURN) {
     if (!chat_typing) {
@@ -1016,6 +1035,17 @@ if (chat_typing &&
 }   // <-- CLOSE while (SDL_PollEvent)
 
 sim_time += DT;
+update_fireworks(DT);
+
+#ifdef ENABLE_MULTIPLAYER
+// ---------------- EVENT RECEIVE ----------------
+NetEvent evt{};
+while (net_tick_event(evt)) {
+    if (evt.type == NetEventType::FIREWORK_LAUNCH) {
+        spawn_fireworks(evt.x, evt.y, evt.z, evt.seed);
+    }
+}
+#endif
 
 
 // ================== GAME UPDATE ==================
@@ -1099,8 +1129,8 @@ if (net_send_accum >= NET_SEND_RATE) {
 
 #endif
 
-
 #ifdef ENABLE_MULTIPLAYER
+// ================== NET STATE RECEIVE ==================
 NetState incoming{};
 while (net_tick(incoming)) {
 
@@ -1119,13 +1149,10 @@ while (net_tick(incoming)) {
 
     // 🔹 GLOBAL CHAT RECEIVE 🔹
     if (incoming.chat[0] != '\0') {
-
-        // Ignore our own echoed message
         if (incoming.player_id != local_player_id) {
             push_chat_history(incoming.chat);
         }
-
-        continue; // chat-only packet
+        continue;
     }
 
     // Ignore our own echoed state
@@ -1133,9 +1160,8 @@ while (net_tick(incoming)) {
         continue;
 
     RemoteDrone& d = remote_drones[incoming.player_id];
-d.state = incoming;
-d.last_seen = sim_time;   // 🔹 mark alive
-
+    d.state = incoming;
+    d.last_seen = sim_time;
 
     if (!d.name_initialized && incoming.name[0] != '\0') {
         create_remote_name_tag(d);
@@ -1143,6 +1169,7 @@ d.last_seen = sim_time;   // 🔹 mark alive
     }
 }
 #endif
+
 
 
 #ifdef ENABLE_MULTIPLAYER
@@ -1297,6 +1324,7 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
         draw_metal_floor(500.0f, 0.0f);
 
         draw_grid(200.0f, 5.0f);
+        render_fireworks();
 
         // Drone
 glPushMatrix();
@@ -1341,9 +1369,7 @@ glPopMatrix();
     // 🔹 THIS IS THE IMPORTANT PART 🔹
     if (remote.name_initialized) {
         draw_remote_name_tag(remote);
-    }
-
-    glPopMatrix();
+}
 }
 #endif
 
