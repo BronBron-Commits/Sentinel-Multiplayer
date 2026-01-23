@@ -1,12 +1,24 @@
 #include "net/net_api.hpp"
 #include "net/net_event.hpp"
 
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <unistd.h>
 #include <cstring>
 #include <cstdio>
 #include <queue>
+
+// ------------------------------------------------------------
+// Platform sockets
+// ------------------------------------------------------------
+
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
+    using socklen_t = int;
+#else
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+#endif
 
 // ------------------------------------------------------------
 // Socket state
@@ -19,7 +31,7 @@ static socklen_t last_sender_len = sizeof(last_sender);
 static bool has_peer = false;
 
 // ------------------------------------------------------------
-// EVENT QUEUE (stubbed local delivery)
+// EVENT QUEUE (local stub delivery)
 // ------------------------------------------------------------
 
 static std::queue<NetEvent> event_queue;
@@ -29,6 +41,15 @@ static std::queue<NetEvent> event_queue;
 // ------------------------------------------------------------
 
 bool net_init(const char* addr, uint16_t port) {
+
+#ifdef _WIN32
+    WSADATA wsa{};
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        std::fprintf(stderr, "WSAStartup failed\n");
+        return false;
+    }
+#endif
+
     sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0) {
         perror("socket");
@@ -48,7 +69,13 @@ bool net_init(const char* addr, uint16_t port) {
 
     if (bind(sock_fd, (sockaddr*)&local, sizeof(local)) < 0) {
         perror("bind");
+
+#ifdef _WIN32
+        closesocket(sock_fd);
+        WSACleanup();
+#else
         close(sock_fd);
+#endif
         sock_fd = -1;
         return false;
     }
@@ -63,7 +90,12 @@ bool net_init(const char* addr, uint16_t port) {
 
 void net_shutdown() {
     if (sock_fd >= 0) {
+#ifdef _WIN32
+        closesocket(sock_fd);
+        WSACleanup();
+#else
         close(sock_fd);
+#endif
         sock_fd = -1;
     }
 }
@@ -78,7 +110,7 @@ bool net_send(const NetState& state) {
 
     ssize_t sent = sendto(
         sock_fd,
-        &state,
+        (const char*)&state,
         sizeof(NetState),
         0,
         (sockaddr*)&peer_addr,
@@ -95,7 +127,7 @@ bool net_tick(NetState& out_state) {
     NetState incoming{};
     ssize_t r = recvfrom(
         sock_fd,
-        &incoming,
+        (char*)&incoming,
         sizeof(NetState),
         MSG_DONTWAIT,
         (sockaddr*)&last_sender,
@@ -117,7 +149,7 @@ bool net_tick(NetState& out_state) {
 
 bool net_send_event(const NetEvent& e) {
     // Stub behavior:
-    // Push event locally so client immediately receives it.
+    // Immediately deliver locally (single-process testing)
     event_queue.push(e);
     return true;
 }
