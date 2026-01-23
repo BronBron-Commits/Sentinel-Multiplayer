@@ -7,14 +7,9 @@
 #include "net/net_event.hpp"
 #include "firework.hpp"
 
+static bool server_connected = false;
+
 static bool name_confirmed = false;
-
-static bool awaiting_id = true;
-
-static bool id_requested = false;
-
-static bool id_assigned = false;
-
 
 #ifdef ENABLE_MULTIPLAYER
 #include "net/net_api.hpp"
@@ -24,6 +19,10 @@ static NetState net_state{};
 #ifdef ENABLE_MULTIPLAYER
 static float net_send_accum = 0.0f;
 static constexpr float NET_SEND_RATE = 1.0f / 20.0f; // 20 Hz
+#endif
+
+#ifdef ENABLE_MULTIPLAYER
+static uint32_t local_player_id = 0;
 #endif
 
 
@@ -856,9 +855,6 @@ void draw_remote_name_tag(const RemoteDrone& d) {
 #endif
 
 
-#ifdef ENABLE_MULTIPLAYER
-static uint32_t local_player_id = 0;
-#endif
 
 int main() {
     SDL_Init(SDL_INIT_VIDEO);
@@ -889,7 +885,7 @@ if (!ui_font) {
     cam_y_smooth = pos_y;
     float sim_time = 0.0f;
     #ifdef ENABLE_MULTIPLAYER
-    net_init("127.0.0.1", 7777);
+    net_init("146.71.76.134", 7777);
     #endif
     
 
@@ -1115,40 +1111,24 @@ vel_z += world_az * DT;
         pos_y += vel_y * DT;
         pos_z += vel_z * DT;
         
-if (id_assigned) {
-    std::snprintf(net_state.name, NET_NAME_MAX, "%s", player_name.c_str());
-} else {
-    net_state.name[0] = '\0';
-}
-
-
-
-        
-        #ifdef ENABLE_MULTIPLAYER
-if (!id_assigned && !id_requested) {
-    net_state.player_id = 0;   // request ID ONCE
-    id_requested = true;
-} else {
-    net_state.player_id = local_player_id;
-}
+#ifdef ENABLE_MULTIPLAYER
+std::snprintf(net_state.name, NET_NAME_MAX, "%s", player_name.c_str());
+net_state.player_id = local_player_id;
 
 net_state.x     = pos_x;
 net_state.y     = pos_y;
 net_state.z     = pos_z;
 net_state.yaw   = yaw;
-net_state.pitch = pitch;   // 🔹 ADD
-net_state.roll  = roll;    // 🔹 ADD
+net_state.pitch = pitch;
+net_state.roll  = roll;
 
 net_send_accum += DT;
 if (net_send_accum >= NET_SEND_RATE) {
     net_send(net_state);
     net_send_accum = 0.0f;
 }
-
-
-
-
 #endif
+
 
 #ifdef ENABLE_MULTIPLAYER
 // ================== NET STATE RECEIVE ==================
@@ -1157,16 +1137,20 @@ while (net_tick(incoming)) {
 
     if (incoming.player_id == 0)
         continue;
+        
+if (local_player_id == 0 && incoming.player_id != 0) {
+    local_player_id = incoming.player_id;
 
-    // Accept ID assignment ONLY while awaiting it
-    if (awaiting_id && incoming.player_id != 0) {
-        local_player_id = incoming.player_id;
-        id_assigned = true;
-        awaiting_id = false;
-
-        std::printf("[client] assigned id=%u\n", local_player_id);
-        continue;
+    if (!server_connected) {
+        server_connected = true;
+        push_chat_history("[system] Connected to server");
     }
+
+    std::printf("[client] assigned id=%u\n", local_player_id);
+    continue;
+}
+
+
 
     // 🔹 GLOBAL CHAT RECEIVE 🔹
     if (incoming.chat[0] != '\0') {

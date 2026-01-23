@@ -120,28 +120,34 @@ bool net_send(const NetState& state) {
     return sent == sizeof(NetState);
 }
 
-bool net_tick(NetState& out_state) {
-    if (sock_fd < 0)
-        return false;
+bool net_tick(NetState& out) {
+    sockaddr_in from{};
+    socklen_t from_len = sizeof(from);
 
-    NetState incoming{};
     ssize_t r = recvfrom(
         sock_fd,
-        (char*)&incoming,
+        &out,
         sizeof(NetState),
         MSG_DONTWAIT,
-        (sockaddr*)&last_sender,
-        &last_sender_len
+        (sockaddr*)&from,
+        &from_len
     );
 
     if (r == sizeof(NetState)) {
-        has_peer = true;
-        out_state = incoming;
+
+        // 🔴 THIS IS THE LINE YOU COULD NOT FIND
+        if (!has_peer) {
+            peer_addr = from;
+            has_peer = true;
+            std::printf("[net] learned peer address\n");
+        }
+
         return true;
     }
 
     return false;
 }
+
 
 // ------------------------------------------------------------
 // EVENT API (STUB IMPLEMENTATION)
