@@ -156,6 +156,11 @@ static constexpr float YAW_SPEED = 90.0f; // deg/sec
 static constexpr float CAM_Y_LAG = 0.08f;
 static constexpr float CAM_Y_FOLLOW_GAIN = 0.35f;   // < 1.0 = slower than drone
 static constexpr float CAM_Y_MAX_SPEED   = 6.0f;    // units per second
+// -------- Idle bob (visual only) --------
+static constexpr float IDLE_BOB_AMPLITUDE = 0.12f;
+static constexpr float IDLE_BOB_SPEED     = 1.6f;   // cycles per second
+
+
 
 #ifdef ENABLE_MULTIPLAYER
 void create_remote_name_tag(RemoteDrone& d);
@@ -1035,6 +1040,22 @@ if (chat_typing &&
 }   // <-- CLOSE while (SDL_PollEvent)
 
 sim_time += DT;
+
+// -------- Idle bob (visual offset only) --------
+float idle_bob =
+    std::sin(sim_time * IDLE_BOB_SPEED * 2.0f * 3.1415926f)
+    * IDLE_BOB_AMPLITUDE;
+
+// Fade bob when moving
+float horizontal_speed =
+    std::sqrt(vel_x * vel_x + vel_z * vel_z);
+
+float idle_factor =
+    std::fmax(0.0f, 1.0f - horizontal_speed * 0.25f);
+
+idle_bob *= idle_factor;
+
+
 update_fireworks(DT);
 
 #ifdef ENABLE_MULTIPLAYER
@@ -1328,7 +1349,7 @@ glTranslatef(-pos_x, -pos_y, -pos_z);
 
         // Drone
 glPushMatrix();
-glTranslatef(pos_x, pos_y, pos_z);
+glTranslatef(pos_x, pos_y + idle_bob, pos_z);
 glRotatef(-yaw, 0, 1, 0);
 glRotatef(roll,  0, 0, 1);
 glRotatef(pitch, 1, 0, 0);
@@ -1337,7 +1358,7 @@ glPopMatrix();
 
 // Name tag (WORLD-SPACE BILLBOARD)
 glPushMatrix();
-glTranslatef(pos_x, pos_y + 1.75f, pos_z);
+glTranslatef(pos_x, pos_y + 1.75f + idle_bob, pos_z);
 glRotatef(yaw, 0, 1, 0);   // face camera
 draw_name_tag();
 glPopMatrix();
@@ -1347,8 +1368,14 @@ glPopMatrix();
 for (const auto& [id, remote] : remote_drones) {
     const NetState& s = remote.state;
 
+float remote_bob =
+    std::sin((sim_time + id) * IDLE_BOB_SPEED * 2.0f * 3.1415926f)
+    * IDLE_BOB_AMPLITUDE * 0.8f;
+
+
 glPushMatrix();
-glTranslatef(s.x, s.y, s.z);
+glTranslatef(s.x, s.y + remote_bob, s.z);
+
 
 // yaw first (world-space heading)
 glRotatef(-s.yaw, 0, 1, 0);
