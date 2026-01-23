@@ -7,6 +7,8 @@
 #include "net/net_event.hpp"
 #include "firework.hpp"
 
+static bool chat_pending = false;
+
 static bool server_connected = false;
 
 static bool name_confirmed = false;
@@ -830,10 +832,6 @@ void draw_remote_name_tag(const RemoteDrone& d) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glColor4f(1,1,1,1);
-    glPushMatrix();
-
-    glTranslatef(0.0f, 1.75f, 0.0f);
-    glRotatef(yaw, 0, 1, 0);   // ✅ LOCAL camera yaw
 
     float s = 0.010f;
     float w = d.name_tag->w * s;
@@ -846,10 +844,10 @@ void draw_remote_name_tag(const RemoteDrone& d) {
         glTexCoord2f(0,0); glVertex3f(-w*0.5f, h, 0);
     glEnd();
 
-    glPopMatrix();
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
 }
+
 
 
 #endif
@@ -999,13 +997,13 @@ push_chat_history(full_msg.c_str());
 // send once
 #ifdef ENABLE_MULTIPLAYER
 std::snprintf(net_state.chat, NET_CHAT_MAX, "%s", full_msg.c_str());
-net_send_accum += DT;
-if (net_send_accum >= NET_SEND_RATE) {
-    net_send(net_state);
-    net_send_accum = 0.0f;
-}
+chat_pending = true;
+// 🔴 SEND IMMEDIATELY
+net_send(net_state);
 
-net_state.chat[0] = '\0';   // IMPORTANT: clear after send
+// clear AFTER send
+net_state.chat[0] = '\0';
+
 #endif
 
 }
@@ -1124,9 +1122,15 @@ net_state.roll  = roll;
 
 net_send_accum += DT;
 if (net_send_accum >= NET_SEND_RATE) {
-    net_send(net_state);
+
+    // do NOT clobber chat
+    if (!chat_pending) {
+        net_send(net_state);
+    }
+
     net_send_accum = 0.0f;
 }
+
 #endif
 
 
@@ -1377,10 +1381,23 @@ glColor3f(1.0f, 1.0f, 1.0f);
 
 glPopMatrix();
 
-    // 🔹 THIS IS THE IMPORTANT PART 🔹
-    if (remote.name_initialized) {
-        draw_remote_name_tag(remote);
+if (remote.name_initialized) {
+    glPushMatrix();
+
+    glTranslatef(
+        s.x,
+        s.y + 1.75f + remote_bob,
+        s.z
+    );
+
+    // billboard toward camera
+    glRotatef(yaw, 0, 1, 0);
+
+    draw_remote_name_tag(remote);
+
+    glPopMatrix();
 }
+
 }
 #endif
 
