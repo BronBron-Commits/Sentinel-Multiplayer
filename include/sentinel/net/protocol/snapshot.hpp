@@ -16,7 +16,10 @@ struct InputCmd {
 
     uint32_t player_id = 0;
     uint32_t tick = 0;
-    float throttle = 0.0f;
+
+    float throttle = 0.0f; // forward/back
+    float yaw      = 0.0f; // left/right
+    float pitch    = 0.0f; // up/down
 };
 
 struct Snapshot {
@@ -26,7 +29,10 @@ struct Snapshot {
     uint32_t tick = 0;
     double   server_time = 0.0;
 
-    float x = 0;
-    float y = 0;
-    float z = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+
+    float yaw   = 0.0f;
+    float pitch = 0.0f;
 };

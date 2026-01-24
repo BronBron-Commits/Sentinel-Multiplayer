@@ -5,21 +5,17 @@
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
 
-using SteadyClock = std::chrono::steady_clock;
-
 int main() {
     setbuf(stdout, nullptr);
     net_init("127.0.0.1", 7777);
 
-    // Send HELLO
     PacketHeader hello{ PacketType::HELLO };
     net_send_raw(&hello, sizeof(hello));
 
     bool connected = false;
     uint32_t player_id = 0;
 
-    float predicted_x = 0.0f;
-    float throttle = 1.0f;
+    float x = 0, z = 0, yaw = 0;
     uint32_t tick = 0;
 
     printf("[client] waiting for server...\n");
@@ -30,14 +26,16 @@ int main() {
             if (!connected && s.player_id != 0) {
                 connected = true;
                 player_id = s.player_id;
-                predicted_x = s.x;
-
+                x = s.x;
+                z = s.z;
+                yaw = s.yaw;
                 printf("[client] connected as id=%u\n", player_id);
             }
 
             if (connected) {
-                float error = s.x - predicted_x;
-                predicted_x += error * 0.1f;
+                x += (s.x - x) * 0.1f;
+                z += (s.z - z) * 0.1f;
+                yaw += (s.yaw - yaw) * 0.1f;
             }
         }
 
@@ -45,12 +43,13 @@ int main() {
             InputCmd in{};
             in.player_id = player_id;
             in.tick = tick++;
-            in.throttle = throttle;
+            in.throttle = 1.0f;
+            in.yaw = 0.5f;
+            in.pitch = 0.0f;
 
             net_send_raw(&in, sizeof(in));
 
-            predicted_x += throttle * 2.0f * (1.0f / 60.0f);
-            printf("[client] x=%.2f\n", predicted_x);
+            printf("[client] x=%.2f z=%.2f yaw=%.2f\n", x, z, yaw);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(16));

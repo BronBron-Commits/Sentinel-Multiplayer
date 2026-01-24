@@ -1,7 +1,6 @@
 #include <cstdio>
 #include <thread>
 #include <chrono>
-#include <unordered_map>
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
@@ -19,7 +18,8 @@ int main() {
 
     bool has_client = false;
     uint32_t player_id = 0;
-    float last_throttle = 0.0f;
+    InputCmd last_input{};
+
     uint32_t tick = 0;
 
     const auto tick_dt =
@@ -32,40 +32,45 @@ int main() {
     printf("[server] running\n");
 
     while (true) {
-        uint8_t buffer[256];
+        uint8_t buf[256];
         ssize_t n;
 
-        while ((n = net_recv_raw(buffer, sizeof(buffer))) > 0) {
-            auto* hdr = reinterpret_cast<PacketHeader*>(buffer);
+        while ((n = net_recv_raw(buf, sizeof(buf))) > 0) {
+            auto* hdr = reinterpret_cast<PacketHeader*>(buf);
 
             if (hdr->type == PacketType::HELLO && !has_client) {
                 has_client = true;
                 player_id = 1;
-
                 printf("[server] client joined: id=%u\n", player_id);
 
-                Snapshot welcome{};
-                welcome.player_id = player_id;
-                welcome.tick = tick;
-                welcome.server_time = tick * TICK_DT;
-                welcome.x = player.x;
-
-                net_send_snapshot(welcome);
+                Snapshot s{};
+                s.player_id = player_id;
+                net_send_snapshot(s);
             }
-            else if (hdr->type == PacketType::INPUT && has_client) {
-                auto* in = reinterpret_cast<InputCmd*>(buffer);
-                last_throttle = in->throttle;
+            else if (hdr->type == PacketType::INPUT) {
+                last_input = *reinterpret_cast<InputCmd*>(buf);
             }
         }
 
         if (has_client) {
-            sim_update(world, player, TICK_DT, last_throttle);
+            sim_update(
+                world,
+                player,
+                TICK_DT,
+                last_input.throttle,
+                last_input.yaw,
+                last_input.pitch
+            );
 
             Snapshot s{};
             s.player_id = player_id;
             s.tick = tick++;
             s.server_time = s.tick * TICK_DT;
             s.x = player.x;
+            s.y = player.y;
+            s.z = player.z;
+            s.yaw = player.yaw;
+            s.pitch = player.pitch;
 
             net_send_snapshot(s);
         }
