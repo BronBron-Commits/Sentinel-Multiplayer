@@ -1,135 +1,118 @@
 #include <cstdio>
-#include <thread>
-#include <chrono>
 #include <cmath>
-
 #include <SDL2/SDL.h>
-#include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
-
-#include "client/math.hpp"
-#include "client/camera.hpp"
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
+
+static void setup_lighting() {
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    glEnable(GL_COLOR_MATERIAL);
+
+    GLfloat ambient[] = {0.45f,0.45f,0.45f,1};
+    GLfloat diffuse[] = {1,1,1,1};
+    GLfloat dir[]     = {-0.3f,-1.0f,-0.2f,0};
+
+    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+    glLightfv(GL_LIGHT0, GL_POSITION, dir);
+}
 
 int main() {
     setbuf(stdout, nullptr);
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(
-        SDL_GL_CONTEXT_PROFILE_MASK,
-        SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
-    );
-
     SDL_Window* win = SDL_CreateWindow(
-        "Sentinel Multiplayer",
+        "Sentinel Multiplayer Client",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         1280, 720,
         SDL_WINDOW_OPENGL
     );
 
-    SDL_GLContext glctx = SDL_GL_CreateContext(win);
+    SDL_GLContext ctx = SDL_GL_CreateContext(win);
     SDL_GL_SetSwapInterval(1);
 
-    glewInit();
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_NORMALIZE);
+    setup_lighting();
 
+    printf("[client] starting\n");
     net_init("127.0.0.1", 7777);
 
     PacketHeader hello{ PacketType::HELLO };
     net_send_raw(&hello, sizeof(hello));
+    printf("[client] HELLO sent\n");
 
     bool connected = false;
     uint32_t player_id = 0;
 
-    Vec3 drone_pos{0,0,0};
-    float drone_yaw = 0.0f;
+    float px=0, py=0.5f, pz=0;
+    float yaw = 0.0f;
 
-    Camera cam{};
-
-    printf("[client] waiting for server...\n");
-
+    uint32_t start = SDL_GetTicks();
     bool running = true;
+
     while (running) {
-        // ---------------- events ----------------
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
                 running = false;
         }
 
-        // ---------------- input ----------------
+        // -------- INPUT --------
         SDL_PumpEvents();
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
         InputCmd input{};
-        input.throttle = 0.0f;
-        input.strafe   = 0.0f;
-        input.yaw      = 0.0f;
-        input.pitch    = 0.0f;
-
-        // W / S = vertical
-        if (keys[SDL_SCANCODE_W]) input.throttle += 1.0f;
-        if (keys[SDL_SCANCODE_S]) input.throttle -= 1.0f;
-
-        // A / D = yaw
-        if (keys[SDL_SCANCODE_A]) input.yaw += 1.0f;
-        if (keys[SDL_SCANCODE_D]) input.yaw -= 1.0f;
-
-        // Arrow keys = planar motion
-        if (keys[SDL_SCANCODE_UP])    input.pitch += 1.0f;
-        if (keys[SDL_SCANCODE_DOWN])  input.pitch -= 1.0f;
-        if (keys[SDL_SCANCODE_LEFT])  input.strafe -= 1.0f;
-        if (keys[SDL_SCANCODE_RIGHT]) input.strafe += 1.0f;
+        if (keys[SDL_SCANCODE_W]) input.throttle += 1;
+        if (keys[SDL_SCANCODE_S]) input.throttle -= 1;
+        if (keys[SDL_SCANCODE_A]) input.yaw += 1;
+        if (keys[SDL_SCANCODE_D]) input.yaw -= 1;
+        if (keys[SDL_SCANCODE_UP])    input.pitch += 1;
+        if (keys[SDL_SCANCODE_DOWN])  input.pitch -= 1;
+        if (keys[SDL_SCANCODE_LEFT])  input.strafe -= 1;
+        if (keys[SDL_SCANCODE_RIGHT]) input.strafe += 1;
 
         net_send_raw(&input, sizeof(input));
 
-        // ---------------- network ----------------
+        // -------- NETWORK --------
         Snapshot s{};
         while (net_poll_snapshot(s)) {
             if (!connected && s.player_id != 0) {
                 connected = true;
                 player_id = s.player_id;
-                printf("[client] connected as id=%u\n", player_id);
+                printf("[client] joined as id=%u\n", player_id);
             }
 
-            drone_pos.x += (s.x - drone_pos.x) * 0.1f;
-            drone_pos.y += (s.y - drone_pos.y) * 0.1f;
-            drone_pos.z += (s.z - drone_pos.z) * 0.1f;
-            drone_yaw   += (s.yaw - drone_yaw) * 0.1f;
+            px += (s.x - px) * 0.1f;
+            py += (s.y - py) * 0.1f;
+            pz += (s.z - pz) * 0.1f;
+            yaw += (s.yaw - yaw) * 0.1f;
         }
 
-        // ---------------- camera ----------------
-        cam.target = drone_pos;
-        cam.pos = {
-            drone_pos.x - std::cos(drone_yaw) * 8.0f,
-            drone_pos.y + 4.0f,
-            drone_pos.z - std::sin(drone_yaw) * 8.0f
-        };
+        // -------- RENDER --------
+        float t = (SDL_GetTicks() - start) * 0.001f;
 
-        // ---------------- render ----------------
-        glViewport(0, 0, 1280, 720);
-        glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
+        glViewport(0,0,1280,720);
+        glClearColor(0.15f,0.18f,0.22f,1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        gluPerspective(60.0, 1280.0/720.0, 0.1, 500.0);
+        gluPerspective(60, 1280.0/720.0, 0.1, 500);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         gluLookAt(
-            cam.pos.x, cam.pos.y, cam.pos.z,
-            cam.target.x, cam.target.y, cam.target.z,
+            px - std::cos(yaw)*6, py+4, pz - std::sin(yaw)*6,
+            px, py, pz,
             0,1,0
         );
 
@@ -138,19 +121,18 @@ int main() {
         glEnable(GL_LIGHTING);
 
         glPushMatrix();
-        glTranslatef(
-            drone_pos.x,
-            drone_pos.y + 0.2f,
-            drone_pos.z
-        );
-        glRotatef(drone_yaw * 57.2958f, 0, 1, 0);
-        draw_drone();
+        glTranslatef(px,py,pz);
+        glRotatef(yaw*57.2958f,0,1,0);
+        draw_drone(t);
         glPopMatrix();
 
         SDL_GL_SwapWindow(win);
         SDL_Delay(16);
     }
 
+    net_shutdown();
+    SDL_GL_DeleteContext(ctx);
+    SDL_DestroyWindow(win);
     SDL_Quit();
     return 0;
 }

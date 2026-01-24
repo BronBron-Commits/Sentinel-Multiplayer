@@ -1,17 +1,19 @@
 #pragma once
 #include <GL/gl.h>
 
-inline void draw_grid(int half_size = 50, float spacing = 1.0f) {
+inline void draw_grid(int half = 50, float step = 1.0f) {
+    glLineWidth(1.0f);
+    glColor3f(0.35f, 0.38f, 0.42f);
+
     glBegin(GL_LINES);
-    glColor3f(0.35f, 0.35f, 0.35f);
+    for (int i = -half; i <= half; ++i) {
+        float x = i * step;
+        glVertex3f(x, 0.001f, -half * step);
+        glVertex3f(x, 0.001f,  half * step);
 
-    for (int i = -half_size; i <= half_size; ++i) {
-        glVertex3f(i * spacing, 0.0f, -half_size * spacing);
-        glVertex3f(i * spacing, 0.0f,  half_size * spacing);
-
-        glVertex3f(-half_size * spacing, 0.0f, i * spacing);
-        glVertex3f( half_size * spacing, 0.0f, i * spacing);
+        float z = i * step;
+        glVertex3f(-half * step, 0.001f, z);
+        glVertex3f( half * step, 0.001f, z);
     }
-
     glEnd();
 }
