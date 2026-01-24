@@ -4,46 +4,55 @@
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
-#include "sentinel/net/replication/replication_client.hpp"
 
 using SteadyClock = std::chrono::steady_clock;
 
 int main() {
     setbuf(stdout, nullptr);
-    printf("[client] starting\n");
-
     net_init("127.0.0.1", 7777);
 
-    Snapshot hello{};
-    hello.type = PacketType::HELLO;
-    net_send_snapshot(hello);
+    // Send HELLO
+    PacketHeader hello{ PacketType::HELLO };
+    net_send_raw(&hello, sizeof(hello));
 
-    ReplicationClient repl;
-    auto start = SteadyClock::now();
+    bool connected = false;
+    uint32_t player_id = 0;
+
+    float predicted_x = 0.0f;
+    float throttle = 1.0f;
+    uint32_t tick = 0;
+
+    printf("[client] waiting for server...\n");
 
     while (true) {
         Snapshot s{};
         while (net_poll_snapshot(s)) {
-            if (s.type == PacketType::SNAPSHOT) {
-                repl.ingest(s);
+            if (!connected && s.player_id != 0) {
+                connected = true;
+                player_id = s.player_id;
+                predicted_x = s.x;
+
+                printf("[client] connected as id=%u\n", player_id);
+            }
+
+            if (connected) {
+                float error = s.x - predicted_x;
+                predicted_x += error * 0.1f;
             }
         }
 
-        double render_time =
-            std::chrono::duration<double>(
-                SteadyClock::now() - start
-            ).count() - 0.1;
+        if (connected) {
+            InputCmd in{};
+            in.player_id = player_id;
+            in.tick = tick++;
+            in.throttle = throttle;
 
-        Snapshot a, b;
-        if (repl.sample(0, render_time, a, b)) {
-            double alpha =
-                (render_time - a.server_time) /
-                (b.server_time - a.server_time);
+            net_send_raw(&in, sizeof(in));
 
-            double x = a.x + (b.x - a.x) * alpha;
-            printf("[client] interp x=%.2f\n", x);
+            predicted_x += throttle * 2.0f * (1.0f / 60.0f);
+            printf("[client] x=%.2f\n", predicted_x);
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 }

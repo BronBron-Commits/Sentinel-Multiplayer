@@ -1,90 +1,44 @@
-#include <cstdio>
-#include <cstring>
-#include <unistd.h>
-#include <arpa/inet.h>
-
 #include "sentinel/net/net_api.hpp"
-#include "sentinel/net/protocol/snapshot.hpp"
+#include "sentinel/net/transport/udp_socket.hpp"
 
-static int sock = -1;
-static sockaddr_in peer{};
-static bool peer_known = false;
+#include <memory>
+#include <cstring>
+
+static std::unique_ptr<UdpSocket> sock;
 
 bool net_init(const char* host, uint16_t port) {
-    sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) {
-        perror("socket");
-        return false;
-    }
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr(host);
-
-    if (strcmp(host, "0.0.0.0") == 0) {
-        if (bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
-            perror("bind");
-            return false;
-        }
-        printf("[net] bound %s:%u\n", host, port);
-    } else {
-        peer = addr;
-        peer_known = true;
-        printf("[net] client target %s:%u\n", host, port);
-    }
-
-    return true;
+    sock.reset(UdpSocket::create(host, port));
+    return sock != nullptr;
 }
 
 void net_shutdown() {
-    if (sock >= 0)
-        close(sock);
+    sock.reset();
 }
 
-void net_send_snapshot(const Snapshot& s) {
-    if (!peer_known) {
-        printf("[net] no peer yet, not sending\n");
-        return;
-    }
+// ---------------- RAW ----------------
 
-    ssize_t n = sendto(
-        sock,
-        &s,
-        sizeof(s),
-        0,
-        (sockaddr*)&peer,
-        sizeof(peer)
-    );
+ssize_t net_send_raw(const void* data, size_t size) {
+    if (!sock) return -1;
+    return sock->send(data, size);
+}
 
-    if (n != sizeof(s))
-        perror("sendto");
+ssize_t net_recv_raw(void* out, size_t max) {
+    if (!sock) return -1;
+    return sock->recv(out, max);
+}
+
+// ------------- SNAPSHOT --------------
+
+bool net_send_snapshot(const Snapshot& s) {
+    return net_send_raw(&s, sizeof(s)) == sizeof(s);
 }
 
 bool net_poll_snapshot(Snapshot& out) {
-    sockaddr_in from{};
-    socklen_t len = sizeof(from);
-
-    ssize_t n = recvfrom(
-        sock,
-        &out,
-        sizeof(out),
-        MSG_DONTWAIT,
-        (sockaddr*)&from,
-        &len
-    );
-
-    if (n != sizeof(out))
+    uint8_t buf[256];
+    ssize_t n = net_recv_raw(buf, sizeof(buf));
+    if (n != sizeof(Snapshot))
         return false;
 
-    // 🔑 Server learns client address here
-    if (!peer_known) {
-        peer = from;
-        peer_known = true;
-        printf("[net] learned peer %s:%u\n",
-               inet_ntoa(from.sin_addr),
-               ntohs(from.sin_port));
-    }
-
+    std::memcpy(&out, buf, sizeof(Snapshot));
     return true;
 }

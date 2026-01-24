@@ -2,12 +2,25 @@
 #include <cstdint>
 
 enum class PacketType : uint32_t {
-    HELLO = 1,
-    SNAPSHOT = 2
+    HELLO    = 1,
+    SNAPSHOT = 2,
+    INPUT    = 3
+};
+
+struct PacketHeader {
+    PacketType type;
+};
+
+struct InputCmd {
+    PacketHeader hdr{ PacketType::INPUT };
+
+    uint32_t player_id = 0;
+    uint32_t tick = 0;
+    float throttle = 0.0f;
 };
 
 struct Snapshot {
-    PacketType type = PacketType::SNAPSHOT;
+    PacketHeader hdr{ PacketType::SNAPSHOT };
 
     uint32_t player_id = 0;
     uint32_t tick = 0;
