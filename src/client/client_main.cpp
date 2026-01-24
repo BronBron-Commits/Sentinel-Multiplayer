@@ -1,56 +1,32 @@
-#include <SDL2/SDL.h>
-#include <GL/gl.h>
 #include <cstdio>
+#include <thread>
+#include <chrono>
+
+#include "sentinel/net/net_api.hpp"
+#include "sentinel/net/protocol/snapshot.hpp"
 
 int main() {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+    std::puts("[client] starting");
+
+    if (!net_init("127.0.0.1", 7777)) {
+        std::puts("[client] net_init failed");
         return 1;
     }
 
-    SDL_Window* win = SDL_CreateWindow(
-        "Sentinel Client",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        800,
-        600,
-        SDL_WINDOW_OPENGL
-    );
+    while (true) {
+        Snapshot s{};
+        bool got = net_poll_snapshot(s);
 
-    if (!win) {
-        std::fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-        return 1;
-    }
-
-    SDL_GLContext ctx = SDL_GL_CreateContext(win);
-
-    bool running = true;
-    while (running) {
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT)
-                running = false;
+        if (got) {
+            std::printf(
+                "[client] recv tick=%u player=%u x=%.2f\n",
+                s.tick, s.player_id, s.x
+            );
         }
 
-        glViewport(0, 0, 800, 600);
-        glClearColor(0.05f, 0.08f, 0.12f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        glBegin(GL_TRIANGLES);
-            glColor3f(1, 0, 0);
-            glVertex2f(-0.5f, -0.5f);
-            glColor3f(0, 1, 0);
-            glVertex2f(0.5f, -0.5f);
-            glColor3f(0, 0, 1);
-            glVertex2f(0.0f, 0.5f);
-        glEnd();
-
-        SDL_GL_SwapWindow(win);
-        SDL_Delay(16);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    SDL_GL_DeleteContext(ctx);
-    SDL_DestroyWindow(win);
-    SDL_Quit();
+    net_shutdown();
     return 0;
 }

@@ -1,56 +1,45 @@
-#include "sentinel/net/net_api.hpp"
-
-#include <sys/socket.h>
+#include "sentinel/net/transport/udp_socket.hpp"
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstring>
-#include <cstdio>
 
-int sock = -1;
-sockaddr_in peer{};
-static bool is_server = false;
+class UdpLinux final : public UdpSocket {
+    int sock{};
+    sockaddr_in peer{};
 
-static void set_nonblocking(int fd) {
-    int flags = fcntl(fd, F_GETFL, 0);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
+public:
+    UdpLinux(const char* host, uint16_t port) {
+        sock = socket(AF_INET, SOCK_DGRAM, 0);
 
-bool net_init(const char* host, uint16_t port, bool server) {
-    is_server = server;
+        fcntl(sock, F_SETFL, O_NONBLOCK);
 
-    sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) {
-        perror("socket");
-        return false;
-    }
-
-    set_nonblocking(sock);
-
-    if (server) {
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port = htons(port);
-
-        if (bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
-            perror("bind");
-            return false;
-        }
-
-        std::puts("[net] server bound");
-    } else {
+        memset(&peer, 0, sizeof(peer));
         peer.sin_family = AF_INET;
         peer.sin_port = htons(port);
         inet_pton(AF_INET, host, &peer.sin_addr);
 
-        std::puts("[net] client ready");
+        sockaddr_in bind_addr{};
+        bind_addr.sin_family = AF_INET;
+        bind_addr.sin_addr.s_addr = INADDR_ANY;
+        bind_addr.sin_port = htons(port);
+        bind(sock, (sockaddr*)&bind_addr, sizeof(bind_addr));
     }
 
-    return true;
-}
+    ~UdpLinux() override {
+        close(sock);
+    }
 
-void net_shutdown() {
-    if (sock >= 0) close(sock);
-    sock = -1;
+    ssize_t send(const void* data, size_t size) override {
+        return sendto(sock, data, size, 0,
+                      (sockaddr*)&peer, sizeof(peer));
+    }
+
+    ssize_t recv(void* out, size_t max) override {
+        return recvfrom(sock, out, max, 0, nullptr, nullptr);
+    }
+};
+
+UdpSocket* UdpSocket::create(const char* host, uint16_t port) {
+    return new UdpLinux(host, port);
 }
