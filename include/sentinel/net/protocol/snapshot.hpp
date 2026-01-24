@@ -18,7 +18,8 @@ struct InputCmd {
     uint32_t tick = 0;
 
     float throttle = 0.0f; // forward/back
-    float yaw      = 0.0f; // left/right
+    float strafe   = 0.0f; // left/right
+    float yaw      = 0.0f; // rotate
     float pitch    = 0.0f; // up/down
 };
 

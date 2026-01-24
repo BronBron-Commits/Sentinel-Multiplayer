@@ -4,7 +4,7 @@ project(sentinel_multiplayer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ---------------- SIM LIB ----------------
+# ---------------- SIM ----------------
 add_library(sentinel_sim
     src/sim/sim.cpp
     src/sim/sim_update.cpp
@@ -15,7 +15,7 @@ target_include_directories(sentinel_sim
         ${CMAKE_SOURCE_DIR}/include
 )
 
-# ---------------- NET LIB ----------------
+# ---------------- NET ----------------
 add_library(sentinel_net
     src/net/net_api.cpp
     src/net/replication/replication_client.cpp
@@ -44,16 +44,65 @@ target_include_directories(server
 )
 
 # ---------------- CLIENT ----------------
+find_package(SDL2 REQUIRED)
+
 add_executable(client
     src/client/client_main.cpp
 )
 
 target_link_libraries(client
     sentinel_net
+    SDL2::SDL2
 )
 
 target_include_directories(client
     PRIVATE
         ${CMAKE_SOURCE_DIR}/include
+)
+
+
+# -------- OpenGL --------
+find_package(OpenGL REQUIRED)
+find_package(GLEW REQUIRED)
+
+target_link_libraries(client
+    sentinel_net
+    SDL2::SDL2
+    OpenGL::GL
+    OpenGL::GLU
+    GLEW::GLEW
+)
+
+
+# -------- OpenGL --------
+find_package(OpenGL REQUIRED)
+find_package(GLEW REQUIRED)
+
+target_link_libraries(client
+    sentinel_net
+    SDL2::SDL2
+    OpenGL::GL
+    OpenGL::GLU
+    GLEW::GLEW
+)
+
+
+# -------- OpenGL --------
+find_package(OpenGL REQUIRED)
+find_package(GLEW REQUIRED)
+
+target_link_libraries(client
+    sentinel_net
+    SDL2::SDL2
+    OpenGL::GL
+    OpenGL::GLU
+    GLEW::GLEW
+)
+
+
+target_include_directories(client
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src/client
 )
 

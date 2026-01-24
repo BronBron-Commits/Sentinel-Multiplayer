@@ -28,7 +28,6 @@ int main() {
         );
 
     auto next_tick = SteadyClock::now();
-
     printf("[server] running\n");
 
     while (true) {
@@ -53,11 +52,13 @@ int main() {
         }
 
         if (has_client) {
+            // ✅ EXACTLY 5 floats after player
             sim_update(
                 world,
                 player,
                 TICK_DT,
                 last_input.throttle,
+                last_input.strafe,
                 last_input.yaw,
                 last_input.pitch
             );

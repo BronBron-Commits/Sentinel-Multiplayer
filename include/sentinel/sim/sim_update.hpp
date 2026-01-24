@@ -18,6 +18,7 @@ void sim_update(
     SimPlayer& player,
     float dt,
     float throttle,
+    float strafe,
     float yaw,
     float pitch
 );

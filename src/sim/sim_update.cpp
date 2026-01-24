@@ -3,28 +3,39 @@
 
 void sim_update(
     SimWorld& world,
-    SimPlayer& player,
+    SimPlayer& p,
     float dt,
     float throttle,
+    float strafe,
     float yaw,
     float pitch
 ) {
     world.time += dt;
 
-    constexpr float TURN_RATE  = 1.8f;  // rad/sec
-    constexpr float PITCH_RATE = 1.2f;
-    constexpr float SPEED      = 6.0f;
+    constexpr float MOVE_SPEED   = 6.0f;
+    constexpr float STRAFE_SPEED = 5.0f;
+    constexpr float TURN_RATE    = 1.8f;
+    constexpr float PITCH_RATE   = 1.4f;
+    constexpr float VERT_SPEED   = 4.0f;
 
-    player.yaw   += yaw   * TURN_RATE  * dt;
-    player.pitch += pitch * PITCH_RATE * dt;
+    // Orientation
+    p.yaw   += yaw   * TURN_RATE  * dt;
+    p.pitch += pitch * PITCH_RATE * dt;
 
-    // Clamp pitch
-    if (player.pitch >  1.2f) player.pitch =  1.2f;
-    if (player.pitch < -1.2f) player.pitch = -1.2f;
+    if (p.pitch >  1.2f) p.pitch =  1.2f;
+    if (p.pitch < -1.2f) p.pitch = -1.2f;
 
-    const float cx = std::cos(player.yaw);
-    const float sx = std::sin(player.yaw);
+    const float cy = std::cos(p.yaw);
+    const float sy = std::sin(p.yaw);
 
-    player.x += cx * throttle * SPEED * dt;
-    player.z += sx * throttle * SPEED * dt;
+    // Forward / backward
+    p.x += cy * throttle * MOVE_SPEED * dt;
+    p.z += sy * throttle * MOVE_SPEED * dt;
+
+    // Strafe
+    p.x += -sy * strafe * STRAFE_SPEED * dt;
+    p.z +=  cy * strafe * STRAFE_SPEED * dt;
+
+    // Vertical
+    p.y += pitch * VERT_SPEED * dt;
 }
