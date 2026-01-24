@@ -13,6 +13,7 @@
 #include "client/math.hpp"
 #include "client/camera.hpp"
 #include "client/render_grid.hpp"
+#include "client/render_drone.hpp"
 
 int main() {
     setbuf(stdout, nullptr);
@@ -21,8 +22,10 @@ int main() {
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
-                        SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+    SDL_GL_SetAttribute(
+        SDL_GL_CONTEXT_PROFILE_MASK,
+        SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
+    );
 
     SDL_Window* win = SDL_CreateWindow(
         "Sentinel Multiplayer",
@@ -98,6 +101,20 @@ int main() {
         );
 
         draw_grid();
+
+        // ---- draw drone ----
+        glPushMatrix();
+        glTranslatef(
+            drone_pos.x,
+            drone_pos.y + 0.2f,
+            drone_pos.z
+        );
+        glRotatef(
+            drone_yaw * 57.2958f,
+            0, 1, 0
+        );
+        draw_drone();
+        glPopMatrix();
 
         SDL_GL_SwapWindow(win);
         SDL_Delay(16);
