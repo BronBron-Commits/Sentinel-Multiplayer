@@ -1,6 +1,9 @@
 #include "sentinel/net/replication/snapshot_buffer.hpp"
 
 void SnapshotBuffer::push(const Snapshot& s) {
+    if (!buffer.empty() && s.server_time <= buffer.back().server_time)
+        return;
+
     buffer.push_back(s);
 
     while (buffer.size() > 64) {

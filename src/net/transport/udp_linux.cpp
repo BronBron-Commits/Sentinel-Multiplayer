@@ -22,7 +22,7 @@ public:
         sockaddr_in bind_addr{};
         bind_addr.sin_family = AF_INET;
         bind_addr.sin_addr.s_addr = INADDR_ANY;
-        bind_addr.sin_port = htons(port);
+        bind_addr.sin_port = htons(0); // EPHEMERAL PORT
         bind(sock, (sockaddr*)&bind_addr, sizeof(bind_addr));
     }
 
