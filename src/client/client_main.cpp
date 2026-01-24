@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <thread>
 #include <chrono>
+#include <cmath>
 
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
@@ -40,8 +41,10 @@ int main() {
 
     glewInit();
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_NORMALIZE);
 
     net_init("127.0.0.1", 7777);
+
     PacketHeader hello{ PacketType::HELLO };
     net_send_raw(&hello, sizeof(hello));
 
@@ -57,12 +60,40 @@ int main() {
 
     bool running = true;
     while (running) {
+        // ---------------- events ----------------
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
                 running = false;
         }
 
+        // ---------------- input ----------------
+        SDL_PumpEvents();
+        const Uint8* keys = SDL_GetKeyboardState(nullptr);
+
+        InputCmd input{};
+        input.throttle = 0.0f;
+        input.strafe   = 0.0f;
+        input.yaw      = 0.0f;
+        input.pitch    = 0.0f;
+
+        // W / S = vertical
+        if (keys[SDL_SCANCODE_W]) input.throttle += 1.0f;
+        if (keys[SDL_SCANCODE_S]) input.throttle -= 1.0f;
+
+        // A / D = yaw
+        if (keys[SDL_SCANCODE_A]) input.yaw += 1.0f;
+        if (keys[SDL_SCANCODE_D]) input.yaw -= 1.0f;
+
+        // Arrow keys = planar motion
+        if (keys[SDL_SCANCODE_UP])    input.pitch += 1.0f;
+        if (keys[SDL_SCANCODE_DOWN])  input.pitch -= 1.0f;
+        if (keys[SDL_SCANCODE_LEFT])  input.strafe -= 1.0f;
+        if (keys[SDL_SCANCODE_RIGHT]) input.strafe += 1.0f;
+
+        net_send_raw(&input, sizeof(input));
+
+        // ---------------- network ----------------
         Snapshot s{};
         while (net_poll_snapshot(s)) {
             if (!connected && s.player_id != 0) {
@@ -77,6 +108,7 @@ int main() {
             drone_yaw   += (s.yaw - drone_yaw) * 0.1f;
         }
 
+        // ---------------- camera ----------------
         cam.target = drone_pos;
         cam.pos = {
             drone_pos.x - std::cos(drone_yaw) * 8.0f,
@@ -84,6 +116,7 @@ int main() {
             drone_pos.z - std::sin(drone_yaw) * 8.0f
         };
 
+        // ---------------- render ----------------
         glViewport(0, 0, 1280, 720);
         glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -100,19 +133,17 @@ int main() {
             0,1,0
         );
 
+        glDisable(GL_LIGHTING);
         draw_grid();
+        glEnable(GL_LIGHTING);
 
-        // ---- draw drone ----
         glPushMatrix();
         glTranslatef(
             drone_pos.x,
             drone_pos.y + 0.2f,
             drone_pos.z
         );
-        glRotatef(
-            drone_yaw * 57.2958f,
-            0, 1, 0
-        );
+        glRotatef(drone_yaw * 57.2958f, 0, 1, 0);
         draw_drone();
         glPopMatrix();
 
