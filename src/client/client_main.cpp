@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cmath>
+#include <unordered_map>
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -8,6 +9,11 @@
 #include "sentinel/net/protocol/snapshot.hpp"
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
+
+struct RemoteDrone {
+    float x = 0, y = 0, z = 0;
+    float yaw = 0, pitch = 0;
+};
 
 static void setup_lighting() {
     glEnable(GL_LIGHTING);
@@ -56,6 +62,8 @@ int main() {
     float px=0, py=0.5f, pz=0;
     float yaw = 0.0f;
 
+    std::unordered_map<uint32_t, RemoteDrone> remotes;
+
     uint32_t start = SDL_GetTicks();
     bool running = true;
 
@@ -71,6 +79,8 @@ int main() {
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
         InputCmd input{};
+        input.player_id = player_id;
+
         if (keys[SDL_SCANCODE_W]) input.throttle += 1;
         if (keys[SDL_SCANCODE_S]) input.throttle -= 1;
         if (keys[SDL_SCANCODE_A]) input.yaw += 1;
@@ -89,12 +99,21 @@ int main() {
                 connected = true;
                 player_id = s.player_id;
                 printf("[client] joined as id=%u\n", player_id);
+                continue;
             }
 
-            px += (s.x - px) * 0.1f;
-            py += (s.y - py) * 0.1f;
-            pz += (s.z - pz) * 0.1f;
-            yaw += (s.yaw - yaw) * 0.1f;
+            if (s.player_id == player_id) {
+                px += (s.x - px) * 0.1f;
+                py += (s.y - py) * 0.1f;
+                pz += (s.z - pz) * 0.1f;
+                yaw += (s.yaw - yaw) * 0.1f;
+            } else {
+                auto& r = remotes[s.player_id];
+                r.x += (s.x - r.x) * 0.1f;
+                r.y += (s.y - r.y) * 0.1f;
+                r.z += (s.z - r.z) * 0.1f;
+                r.yaw += (s.yaw - r.yaw) * 0.1f;
+            }
         }
 
         // -------- RENDER --------
@@ -120,11 +139,21 @@ int main() {
         draw_grid();
         glEnable(GL_LIGHTING);
 
+        // Local drone
         glPushMatrix();
         glTranslatef(px,py,pz);
         glRotatef(yaw*57.2958f,0,1,0);
         draw_drone(t);
         glPopMatrix();
+
+        // Remote drones
+        for (auto& [id, r] : remotes) {
+            glPushMatrix();
+            glTranslatef(r.x,r.y,r.z);
+            glRotatef(r.yaw*57.2958f,0,1,0);
+            draw_drone(t);
+            glPopMatrix();
+        }
 
         SDL_GL_SwapWindow(win);
         SDL_Delay(16);
