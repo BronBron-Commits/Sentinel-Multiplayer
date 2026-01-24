@@ -1,6 +1,6 @@
 #include <SDL2/SDL.h>
+#include <GL/gl.h>
 #include <cstdio>
-#include "sentinel/net/net_api.hpp"
 
 int main() {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -22,7 +22,7 @@ int main() {
         return 1;
     }
 
-    net_init("127.0.0.1", 7777);
+    SDL_GLContext ctx = SDL_GL_CreateContext(win);
 
     bool running = true;
     while (running) {
@@ -32,15 +32,24 @@ int main() {
                 running = false;
         }
 
-        Snapshot s;
-        while (net_poll_snapshot(s)) {
-            // placeholder: will feed renderer later
-        }
+        glViewport(0, 0, 800, 600);
+        glClearColor(0.05f, 0.08f, 0.12f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
 
+        glBegin(GL_TRIANGLES);
+            glColor3f(1, 0, 0);
+            glVertex2f(-0.5f, -0.5f);
+            glColor3f(0, 1, 0);
+            glVertex2f(0.5f, -0.5f);
+            glColor3f(0, 0, 1);
+            glVertex2f(0.0f, 0.5f);
+        glEnd();
+
+        SDL_GL_SwapWindow(win);
         SDL_Delay(16);
     }
 
-    net_shutdown();
+    SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();
     return 0;
