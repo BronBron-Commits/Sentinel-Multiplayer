@@ -5,7 +5,7 @@
 class SnapshotBuffer {
 public:
     void push(const Snapshot& s);
-    Snapshot sample(float alpha) const;
+    bool sample(double render_time, Snapshot& a, Snapshot& b) const;
 
 private:
     std::deque<Snapshot> buffer;

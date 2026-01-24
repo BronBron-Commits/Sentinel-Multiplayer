@@ -2,11 +2,23 @@
 
 void SnapshotBuffer::push(const Snapshot& s) {
     buffer.push_back(s);
-    if (buffer.size() > 32)
+
+    while (buffer.size() > 64) {
         buffer.pop_front();
+    }
 }
 
-Snapshot SnapshotBuffer::sample(float) const {
-    if (buffer.empty()) return {};
-    return buffer.back();
+bool SnapshotBuffer::sample(double t, Snapshot& a, Snapshot& b) const {
+    if (buffer.size() < 2)
+        return false;
+
+    for (size_t i = 1; i < buffer.size(); ++i) {
+        if (buffer[i].server_time >= t) {
+            a = buffer[i - 1];
+            b = buffer[i];
+            return true;
+        }
+    }
+
+    return false;
 }

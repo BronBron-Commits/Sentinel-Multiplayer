@@ -6,27 +6,27 @@
 #include "sentinel/net/protocol/snapshot.hpp"
 
 int main() {
-    std::puts("[client] starting");
+    setbuf(stdout, nullptr);
 
-    if (!net_init("127.0.0.1", 7777)) {
-        std::puts("[client] net_init failed");
-        return 1;
-    }
+    printf("[client] starting\n");
+
+    net_init("127.0.0.1", 7777);
+
+    // 🔑 Send HELLO
+    Snapshot hello{};
+    hello.type = PacketType::HELLO;
+    net_send_snapshot(hello);
+
+    printf("[client] hello sent\n");
 
     while (true) {
-        Snapshot s{};
-        bool got = net_poll_snapshot(s);
-
-        if (got) {
-            std::printf(
-                "[client] recv tick=%u player=%u x=%.2f\n",
-                s.tick, s.player_id, s.x
-            );
+        Snapshot s;
+        while (net_poll_snapshot(s)) {
+            if (s.type == PacketType::SNAPSHOT) {
+                printf("[client] recv tick=%u x=%.2f\n", s.tick, s.x);
+            }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-
-    net_shutdown();
-    return 0;
 }
