@@ -4,7 +4,7 @@
 #include <windows.h>
 
 #include <winsock2.h>
-#include <ws2tcpip.h>   // <-- REQUIRED for inet_pton
+#include <ws2tcpip.h>
 
 #include <SDL.h>
 #include <GL/gl.h>
@@ -25,17 +25,19 @@
 // ------------------------------------------------------------
 // Tuning
 // ------------------------------------------------------------
-constexpr float YAW_SPEED = 1.8f;
+constexpr float MOVE_SPEED     = 6.0f;
+constexpr float STRAFE_SPEED   = 5.0f;
+constexpr float VERTICAL_SPEED = 4.0f;
+constexpr float YAW_SPEED      = 1.8f;
 
-// ------------------------------------------------------------
-// Helpers
+constexpr float CAM_BACK = 8.0f;
+constexpr float CAM_UP   = 4.5f;
+
 // ------------------------------------------------------------
 static float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
-// ------------------------------------------------------------
-// Lighting
 // ------------------------------------------------------------
 static void setup_lighting() {
     glEnable(GL_LIGHTING);
@@ -52,12 +54,9 @@ static void setup_lighting() {
 }
 
 // ------------------------------------------------------------
-// Main
-// ------------------------------------------------------------
 int main() {
     setbuf(stdout, nullptr);
 
-    // ---------------- SDL / GL ----------------
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 
     SDL_Window* win = SDL_CreateWindow(
@@ -75,7 +74,6 @@ int main() {
     glEnable(GL_NORMALIZE);
     setup_lighting();
 
-    // ---------------- Network ----------------
     if (!net_init("146.71.76.134", 7777)) {
         printf("[client] net_init failed\n");
         return 1;
@@ -89,46 +87,83 @@ int main() {
     PacketHeader hello{};
     hello.type = PacketType::HELLO;
     net_send_raw_to(&hello, sizeof(hello), server);
-    printf("[client] HELLO sent\n");
 
-    // ---------------- Replication ----------------
     ReplicationClient replication;
     uint32_t local_player_id = 0;
 
-    // ---------------- Camera ----------------
+    float px = 0.0f, py = 1.5f, pz = 0.0f;
+    float yaw = 0.0f;
+
     Camera cam{};
 
-    bool running = true;
     Uint32 last_ticks = SDL_GetTicks();
+    bool running = true;
 
-    // ---------------- Main Loop ----------------
     while (running) {
         Uint32 now = SDL_GetTicks();
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
 
-        // -------- Events --------
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
                 running = false;
         }
 
-        // -------- Receive snapshots --------
+        SDL_PumpEvents();
+        const Uint8* keys = SDL_GetKeyboardState(nullptr);
+
+        float forward = 0, strafe = 0, vertical = 0, turn = 0;
+
+        if (keys[SDL_SCANCODE_UP])    forward += 1;
+        if (keys[SDL_SCANCODE_DOWN])  forward -= 1;
+        if (keys[SDL_SCANCODE_LEFT])  strafe  -= 1;
+        if (keys[SDL_SCANCODE_RIGHT]) strafe  += 1;
+        if (keys[SDL_SCANCODE_W])     vertical += 1;
+        if (keys[SDL_SCANCODE_S])     vertical -= 1;
+        if (keys[SDL_SCANCODE_A])     turn += 1;
+        if (keys[SDL_SCANCODE_D])     turn -= 1;
+
+        yaw += turn * YAW_SPEED * dt;
+
+        float cy = std::cos(yaw);
+        float sy = std::sin(yaw);
+
+        px += (cy * forward * MOVE_SPEED + -sy * strafe * STRAFE_SPEED) * dt;
+        pz += (sy * forward * MOVE_SPEED +  cy * strafe * STRAFE_SPEED) * dt;
+        py += vertical * VERTICAL_SPEED * dt;
+
+        // Receive snapshots / ID assignment
         Snapshot s;
         sockaddr_in from;
-
         while (net_poll_snapshot_from(s, from)) {
             replication.ingest(s);
-
             if (local_player_id == 0) {
                 local_player_id = s.player_id;
-                printf("[client] assigned local id=%u\n", local_player_id);
+                printf("[client] assigned id=%u\n", local_player_id);
             }
         }
 
-        // -------- Render --------
-        glClearColor(0.15f, 0.18f, 0.22f, 1.0f);
+        // Send local state as Snapshot
+        if (local_player_id != 0) {
+            Snapshot out{};
+            out.player_id   = local_player_id;
+            out.x           = px;
+            out.y           = py;
+            out.z           = pz;
+            out.yaw         = yaw;
+            out.server_time = now * 0.001;
+
+            net_send_raw_to(&out, sizeof(out), server);
+        }
+
+        cam.target = {px, py, pz};
+        cam.pos = {
+            px - cy * CAM_BACK,
+            py + CAM_UP,
+            pz - sy * CAM_BACK
+        };
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
@@ -137,11 +172,6 @@ int main() {
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
-
-        // Fixed camera for now
-        cam.pos    = { 0.0f, 10.0f, 18.0f };
-        cam.target = { 0.0f,  2.0f,  0.0f };
-
         gluLookAt(
             cam.pos.x, cam.pos.y, cam.pos.z,
             cam.target.x, cam.target.y, cam.target.z,
@@ -152,38 +182,41 @@ int main() {
         draw_grid();
         glEnable(GL_LIGHTING);
 
-        // -------- Draw ALL players --------
-        double render_time = now * 0.001 - 0.1; // 100ms interpolation delay
+        glPushMatrix();
+            glTranslatef(px, py, pz);
+            glRotatef(yaw * 57.2958f, 0, 1, 0);
+            draw_drone(now * 0.001f);
+        glPopMatrix();
+
+        double render_time = now * 0.001 - 0.1;
 
         for (uint32_t pid = 1; pid < 64; ++pid) {
+            if (pid == local_player_id)
+                continue;
+
             Snapshot a, b;
             if (!replication.sample(pid, render_time, a, b))
                 continue;
 
-            float alpha =
-                float((render_time - a.server_time) /
-                      (b.server_time - a.server_time));
-
-            float x   = lerp(a.x,   b.x,   alpha);
-            float y   = lerp(a.y,   b.y,   alpha);
-            float z   = lerp(a.z,   b.z,   alpha);
-            float yaw = lerp(a.yaw, b.yaw, alpha);
+            float alpha = float(
+                (render_time - a.server_time) /
+                (b.server_time - a.server_time)
+            );
 
             glPushMatrix();
-                glTranslatef(x, y, z);
-                glRotatef(yaw * 57.2958f, 0, 1, 0);
+                glTranslatef(
+                    lerp(a.x, b.x, alpha),
+                    lerp(a.y, b.y, alpha),
+                    lerp(a.z, b.z, alpha)
+                );
+                glRotatef(lerp(a.yaw, b.yaw, alpha) * 57.2958f, 0, 1, 0);
                 draw_drone(now * 0.001f);
             glPopMatrix();
         }
 
         SDL_GL_SwapWindow(win);
-        SDL_Delay(1);
     }
 
-    // ---------------- Shutdown ----------------
     net_shutdown();
-    SDL_GL_DeleteContext(ctx);
-    SDL_DestroyWindow(win);
-    SDL_Quit();
     return 0;
 }
