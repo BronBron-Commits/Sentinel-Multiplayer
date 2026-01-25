@@ -17,6 +17,8 @@
 
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
+#include "client/render_terrain.hpp"
+
 #include "client/camera.hpp"
 
 #include "sentinel/net/net_api.hpp"
@@ -191,8 +193,10 @@ int main() {
             0, 1, 0
         );
 
+        draw_terrain();
         glDisable(GL_LIGHTING);
         draw_grid();
+   
         glEnable(GL_LIGHTING);
 
         // Local drone
