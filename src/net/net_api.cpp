@@ -15,30 +15,25 @@ void net_shutdown() {
     sock.reset();
 }
 
-// ---------------- RAW ----------------
-
-ssize_t net_send_raw(const void* data, size_t size) {
+ssize_t net_send_raw_to(const void* data, size_t size,
+                        const sockaddr_in& addr) {
     if (!sock) return -1;
-    return sock->send(data, size);
+    return sock->send_to(data, size, addr);
 }
 
-ssize_t net_recv_raw(void* out, size_t max) {
+ssize_t net_recv_raw_from(void* out, size_t max,
+                          sockaddr_in& from) {
     if (!sock) return -1;
-    return sock->recv(out, max);
+    return sock->recv_from(out, max, from);
 }
 
-// ------------- SNAPSHOT --------------
-
-bool net_send_snapshot(const Snapshot& s) {
-    return net_send_raw(&s, sizeof(s)) == sizeof(s);
+bool net_send_snapshot_to(const Snapshot& s,
+                           const sockaddr_in& addr) {
+    return net_send_raw_to(&s, sizeof(s), addr) == sizeof(s);
 }
 
-bool net_poll_snapshot(Snapshot& out) {
-    uint8_t buf[256];
-    ssize_t n = net_recv_raw(buf, sizeof(buf));
-    if (n != sizeof(Snapshot))
-        return false;
-
-    std::memcpy(&out, buf, sizeof(Snapshot));
-    return true;
+bool net_poll_snapshot_from(Snapshot& out,
+                             sockaddr_in& from) {
+    ssize_t n = net_recv_raw_from(&out, sizeof(out), from);
+    return n == sizeof(Snapshot);
 }

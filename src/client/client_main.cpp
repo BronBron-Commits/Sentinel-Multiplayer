@@ -1,52 +1,57 @@
-#include <cstdio>
-#include <cmath>
-#include <unordered_map>
-#include <deque>
-#include <algorithm>
+#define SDL_MAIN_HANDLED
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 
-#include <SDL2/SDL.h>
+#include <windows.h>
+
+#include <SDL.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
 
-#include "sentinel/net/net_api.hpp"
-#include "sentinel/net/protocol/snapshot.hpp"
+#include <cmath>
+#include <cstdio>
+
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
+#include "client/camera.hpp"
 
-constexpr uint32_t INTERP_TICKS = 6;   // playback delay (ticks)
-constexpr size_t   MAX_BUFFER   = 16;
+// -----------------------------
+// Tuning
+// -----------------------------
+constexpr float MOVE_SPEED     = 6.0f;
+constexpr float STRAFE_SPEED   = 5.0f;
+constexpr float VERTICAL_SPEED = 4.0f;
+constexpr float YAW_SPEED      = 1.8f;
 
-struct RemoteBuffer {
-    std::deque<Snapshot> snaps;
-};
-
-static float lerp(float a, float b, float t) {
-    return a + (b - a) * t;
-}
-
+// -----------------------------
+// Lighting
+// -----------------------------
 static void setup_lighting() {
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
     glEnable(GL_COLOR_MATERIAL);
 
-    GLfloat ambient[] = {0.45f,0.45f,0.45f,1};
-    GLfloat diffuse[] = {1,1,1,1};
-    GLfloat dir[]     = {-0.3f,-1.0f,-0.2f,0};
+    GLfloat ambient[] = {0.35f, 0.35f, 0.35f, 1.0f};
+    GLfloat diffuse[] = {1.0f,  1.0f,  1.0f,  1.0f};
+    GLfloat dir[]     = {-0.3f, -1.0f, -0.2f, 0.0f};
 
-    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+    glLightfv(GL_LIGHT0, GL_AMBIENT,  ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE,  diffuse);
     glLightfv(GL_LIGHT0, GL_POSITION, dir);
 }
 
+// -----------------------------
+// Main
+// -----------------------------
 int main() {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 
     SDL_Window* win = SDL_CreateWindow(
-        "Sentinel Multiplayer Client",
+        "Sentinel Client (Controls Restored)",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         1280, 720,
-        SDL_WINDOW_OPENGL
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
     );
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
@@ -56,152 +61,109 @@ int main() {
     glEnable(GL_NORMALIZE);
     setup_lighting();
 
-    net_init("127.0.0.1", 7777);
-    PacketHeader hello{ PacketType::HELLO };
-    net_send_raw(&hello, sizeof(hello));
-
-    bool connected = false;
-    uint32_t player_id = 0;
-
-    float px=0, py=0.5f, pz=0;
+    // -----------------------------
+    // Drone State
+    // -----------------------------
+    float px = 0.0f;
+    float py = 1.2f;
+    float pz = 0.0f;
     float yaw = 0.0f;
 
-    uint32_t local_tick = 0;
-
-    std::unordered_map<uint32_t, RemoteBuffer> remotes;
+    Camera cam{};
 
     bool running = true;
-    constexpr float DT = 1.0f / 60.0f;
+    Uint32 last_ticks = SDL_GetTicks();
 
     while (running) {
+        Uint32 now = SDL_GetTicks();
+        float dt = (now - last_ticks) * 0.001f;
+        last_ticks = now;
+
         SDL_Event e;
-        while (SDL_PollEvent(&e))
+        while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
                 running = false;
+        }
 
-        // ---------- INPUT ----------
+        // -----------------------------
+        // INPUT
+        // -----------------------------
         SDL_PumpEvents();
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
-        InputCmd input{};
-        input.player_id = player_id;
-        input.tick = local_tick++;
+        float forward  = 0.0f;
+        float strafe   = 0.0f;
+        float vertical = 0.0f;
+        float turn     = 0.0f;
 
-        if (keys[SDL_SCANCODE_W]) input.pitch += 1;
-        if (keys[SDL_SCANCODE_S]) input.pitch -= 1;
-        if (keys[SDL_SCANCODE_A]) input.yaw   += 1;
-        if (keys[SDL_SCANCODE_D]) input.yaw   -= 1;
-        if (keys[SDL_SCANCODE_UP])    input.throttle += 1;
-        if (keys[SDL_SCANCODE_DOWN])  input.throttle -= 1;
-        if (keys[SDL_SCANCODE_LEFT])  input.strafe   -= 1;
-        if (keys[SDL_SCANCODE_RIGHT]) input.strafe   += 1;
+        // Vertical
+        if (keys[SDL_SCANCODE_W]) vertical += 1.0f;
+        if (keys[SDL_SCANCODE_S]) vertical -= 1.0f;
 
-        net_send_raw(&input, sizeof(input));
+        // Yaw
+        if (keys[SDL_SCANCODE_A]) turn += 1.0f;
+        if (keys[SDL_SCANCODE_D]) turn -= 1.0f;
 
-        // ---------- LOCAL PREDICTION ----------
-        yaw += input.yaw * 1.8f * DT;
+        // Forward / strafe
+        if (keys[SDL_SCANCODE_UP])    forward += 1.0f;
+        if (keys[SDL_SCANCODE_DOWN])  forward -= 1.0f;
+        if (keys[SDL_SCANCODE_LEFT])  strafe  -= 1.0f;
+        if (keys[SDL_SCANCODE_RIGHT]) strafe  += 1.0f;
+
+        // -----------------------------
+        // SIM UPDATE
+        // -----------------------------
+        yaw += turn * YAW_SPEED * dt;
+
         float cy = std::cos(yaw);
         float sy = std::sin(yaw);
 
-        px += cy * input.throttle * 6.0f * DT;
-        pz += sy * input.throttle * 6.0f * DT;
-        px += -sy * input.strafe * 5.0f * DT;
-        pz +=  cy * input.strafe * 5.0f * DT;
-        py += input.pitch * 4.0f * DT;
+        px += (cy * forward * MOVE_SPEED + -sy * strafe * STRAFE_SPEED) * dt;
+        pz += (sy * forward * MOVE_SPEED +  cy * strafe * STRAFE_SPEED) * dt;
+        py += vertical * VERTICAL_SPEED * dt;
 
-        // ---------- NETWORK ----------
-        Snapshot s{};
-        while (net_poll_snapshot(s)) {
-            if (!connected && s.player_id != 0) {
-                connected = true;
-                player_id = s.player_id;
-                continue;
-            }
+        // -----------------------------
+        // CAMERA (third-person follow)
+        // -----------------------------
+        cam.target = { px, py, pz };
+        cam.pos = {
+            px - cy * 8.0f,
+            py + 4.5f,
+            pz - sy * 8.0f
+        };
 
-            if (s.player_id == player_id)
-                continue;
-
-            auto& buf = remotes[s.player_id].snaps;
-            buf.push_back(s);
-
-            std::sort(buf.begin(), buf.end(),
-                [](const Snapshot& a, const Snapshot& b) {
-                    return a.tick < b.tick;
-                });
-
-            if (buf.size() > MAX_BUFFER)
-                buf.pop_front();
-        }
-
-        // ---------- RENDER ----------
-        glClearColor(0.15f,0.18f,0.22f,1);
+        // -----------------------------
+        // RENDER
+        // -----------------------------
+        glClearColor(0.15f, 0.18f, 0.22f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        gluPerspective(60, 1280.0/720.0, 0.1, 500);
+        gluPerspective(60.0, 1280.0 / 720.0, 0.1, 500.0);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         gluLookAt(
-            px - std::cos(yaw)*6, py+4, pz - std::sin(yaw)*6,
-            px, py, pz,
-            0,1,0
+            cam.pos.x, cam.pos.y, cam.pos.z,
+            cam.target.x, cam.target.y, cam.target.z,
+            0, 1, 0
         );
 
         glDisable(GL_LIGHTING);
         draw_grid();
         glEnable(GL_LIGHTING);
 
-        // Local drone
         glPushMatrix();
-        glTranslatef(px,py,pz);
-        glRotatef(yaw*57.2958f,0,1,0);
-        draw_drone(SDL_GetTicks()*0.001f);
+            glTranslatef(px, py, pz);
+            glRotatef(yaw * 57.2958f, 0, 1, 0);
+            draw_drone(now * 0.001f);
         glPopMatrix();
 
-        // Remote drones (ordered + delayed)
-        for (auto& [id, rb] : remotes) {
-            if (rb.snaps.size() < 2)
-                continue;
-
-            uint32_t render_tick = rb.snaps.back().tick - INTERP_TICKS;
-
-            Snapshot* a = nullptr;
-            Snapshot* b = nullptr;
-
-            for (size_t i = 1; i < rb.snaps.size(); ++i) {
-                if (rb.snaps[i-1].tick <= render_tick &&
-                    rb.snaps[i].tick   >= render_tick) {
-                    a = &rb.snaps[i-1];
-                    b = &rb.snaps[i];
-                    break;
-                }
-            }
-
-            if (!a || !b)
-                continue;
-
-            float t = float(render_tick - a->tick) /
-                      float(b->tick - a->tick);
-
-            float rx = lerp(a->x, b->x, t);
-            float ry = lerp(a->y, b->y, t);
-            float rz = lerp(a->z, b->z, t);
-            float ryaw = lerp(a->yaw, b->yaw, t);
-
-            glPushMatrix();
-            glTranslatef(rx,ry,rz);
-            glRotatef(ryaw*57.2958f,0,1,0);
-            draw_drone(SDL_GetTicks()*0.001f);
-            glPopMatrix();
-        }
-
         SDL_GL_SwapWindow(win);
-        SDL_Delay(16);
+        SDL_Delay(1);
     }
 
-    net_shutdown();
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();

@@ -1,19 +1,20 @@
 #include <cstdio>
 #include <thread>
-#include <chrono>
 #include <unordered_map>
+#include <chrono>
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
 #include "sentinel/sim/sim_update.hpp"
 
-using SteadyClock = std::chrono::steady_clock;
-constexpr double TICK_DT = 1.0 / 60.0;
+using Clock = std::chrono::steady_clock;
+constexpr float DT = 1.0f / 60.0f;
 
-struct ClientState {
-    SimPlayer player{};
-    SimPlayer prev{};
-    InputCmd  last_input{};
+struct Client {
+    sockaddr_in addr{};
+    SimPlayer   player{};
+    SimPlayer   prev{};
+    InputCmd    last_input{};
 };
 
 int main() {
@@ -21,38 +22,38 @@ int main() {
     net_init("0.0.0.0", 7777);
 
     SimWorld world{};
-    std::unordered_map<uint32_t, ClientState> clients;
+    std::unordered_map<uint32_t, Client> clients;
+
     uint32_t next_id = 1;
     uint32_t tick = 0;
 
-    auto tick_dt = std::chrono::duration_cast<SteadyClock::duration>(
-        std::chrono::duration<double>(TICK_DT)
+    auto next_tick = Clock::now();
+    auto tick_step = std::chrono::duration_cast<Clock::duration>(
+        std::chrono::duration<float>(DT)
     );
 
-    auto next_tick = SteadyClock::now();
     printf("[server] running\n");
 
     while (true) {
         uint8_t buf[256];
+        sockaddr_in from{};
         ssize_t n;
 
-        while ((n = net_recv_raw(buf, sizeof(buf))) > 0) {
-            auto* hdr = reinterpret_cast<PacketHeader*>(buf);
+        while ((n = net_recv_raw_from(buf, sizeof(buf), from)) > 0) {
+            auto* hdr = (PacketHeader*)buf;
 
             if (hdr->type == PacketType::HELLO) {
                 uint32_t id = next_id++;
-                clients[id] = ClientState{};
-                printf("[server] client joined: id=%u\n", id);
+                clients[id].addr = from;
+                printf("[server] client joined id=%u\n", id);
 
                 Snapshot s{};
                 s.player_id = id;
-                net_send_snapshot(s);
+                net_send_snapshot_to(s, from);
             }
             else if (hdr->type == PacketType::INPUT) {
-                auto* in = reinterpret_cast<InputCmd*>(buf);
-                auto it = clients.find(in->player_id);
-                if (it != clients.end())
-                    it->second.last_input = *in;
+                auto* in = (InputCmd*)buf;
+                clients[in->player_id].last_input = *in;
             }
         }
 
@@ -62,7 +63,7 @@ int main() {
             sim_update(
                 world,
                 c.player,
-                TICK_DT,
+                DT,
                 c.last_input.throttle,
                 c.last_input.strafe,
                 c.last_input.yaw,
@@ -74,23 +75,17 @@ int main() {
             Snapshot s{};
             s.player_id = id;
             s.tick = tick;
-            s.server_time = tick * TICK_DT;
-
             s.x = c.player.x;
             s.y = c.player.y;
             s.z = c.player.z;
             s.yaw = c.player.yaw;
-            s.pitch = c.player.pitch;
 
-            s.vx = (c.player.x - c.prev.x) / TICK_DT;
-            s.vy = (c.player.y - c.prev.y) / TICK_DT;
-            s.vz = (c.player.z - c.prev.z) / TICK_DT;
-
-            net_send_snapshot(s);
+            for (auto& [_, other] : clients)
+                net_send_snapshot_to(s, other.addr);
         }
 
         tick++;
-        next_tick += tick_dt;
+        next_tick += tick_step;
         std::this_thread::sleep_until(next_tick);
     }
 }

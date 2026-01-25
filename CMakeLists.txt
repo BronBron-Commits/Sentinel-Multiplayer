@@ -1,108 +1,83 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 project(sentinel_multiplayer LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ---------------- SIM ----------------
-add_library(sentinel_sim
+# ============================================================
+# SIM LIBRARY
+# ============================================================
+
+add_library(sentinel_sim STATIC
     src/sim/sim.cpp
     src/sim/sim_update.cpp
 )
 
-target_include_directories(sentinel_sim
-    PUBLIC
-        ${CMAKE_SOURCE_DIR}/include
+target_include_directories(sentinel_sim PUBLIC
+    include
 )
 
-# ---------------- NET ----------------
-add_library(sentinel_net
+# ============================================================
+# NET LIBRARY
+# ============================================================
+
+add_library(sentinel_net STATIC
     src/net/net_api.cpp
     src/net/replication/replication_client.cpp
     src/net/replication/snapshot_buffer.cpp
-    src/net/transport/udp_linux.cpp
+    src/net/transport/udp_win.cpp
 )
 
-target_include_directories(sentinel_net
-    PUBLIC
-        ${CMAKE_SOURCE_DIR}/include
+target_include_directories(sentinel_net PUBLIC
+    include
 )
 
-# ---------------- SERVER ----------------
+target_link_libraries(sentinel_net PUBLIC
+    ws2_32
+)
+
+# ============================================================
+# SDL2 (WINDOWS-SAFE)
+# ============================================================
+
+find_package(SDL2 CONFIG QUIET)
+
+if (TARGET SDL2::SDL2)
+    set(SDL2_TARGET SDL2::SDL2)
+else()
+    find_package(SDL2 REQUIRED)
+    set(SDL2_TARGET ${SDL2_LIBRARIES})
+endif()
+
+# ============================================================
+# CLIENT
+# ============================================================
+add_executable(client
+    src/client/client_main.cpp
+)
+
+target_include_directories(client PRIVATE
+    include
+    ${SDL2_INCLUDE_DIRS}
+)
+
+target_link_libraries(client
+    sentinel_net
+    ${SDL2_TARGET}
+    opengl32
+    glu32
+)
+
+
+# ============================================================
+# SERVER
+# ============================================================
+
 add_executable(server
     src/server/server_main.cpp
 )
 
 target_link_libraries(server
+    sentinel_net
     sentinel_sim
-    sentinel_net
 )
-
-target_include_directories(server
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-)
-
-# ---------------- CLIENT ----------------
-find_package(SDL2 REQUIRED)
-
-add_executable(client
-    src/client/client_main.cpp
-)
-
-target_link_libraries(client
-    sentinel_net
-    SDL2::SDL2
-)
-
-target_include_directories(client
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-)
-
-
-# -------- OpenGL --------
-find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
-
-target_link_libraries(client
-    sentinel_net
-    SDL2::SDL2
-    OpenGL::GL
-    OpenGL::GLU
-    GLEW::GLEW
-)
-
-
-# -------- OpenGL --------
-find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
-
-target_link_libraries(client
-    sentinel_net
-    SDL2::SDL2
-    OpenGL::GL
-    OpenGL::GLU
-    GLEW::GLEW
-)
-
-
-# -------- OpenGL --------
-find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
-
-target_link_libraries(client
-    sentinel_net
-    SDL2::SDL2
-    OpenGL::GL
-    OpenGL::GLU
-    GLEW::GLEW
-)
-
-
-target_include_directories(client
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src/client
-)
-
