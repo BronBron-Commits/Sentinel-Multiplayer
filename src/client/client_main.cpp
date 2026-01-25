@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
+#include <unordered_map>
 
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
@@ -23,7 +24,7 @@
 #include "sentinel/net/protocol/snapshot.hpp"
 
 // ------------------------------------------------------------
-// Tuning
+// Tuning (VISUAL FIDELITY MODE)
 // ------------------------------------------------------------
 constexpr float MOVE_SPEED     = 6.0f;
 constexpr float STRAFE_SPEED   = 5.0f;
@@ -33,9 +34,18 @@ constexpr float YAW_SPEED      = 1.8f;
 constexpr float CAM_BACK = 8.0f;
 constexpr float CAM_UP   = 4.5f;
 
+// Larger delay = smoother remote motion
+constexpr double INTERP_DELAY = 0.45; // seconds
+
 // ------------------------------------------------------------
 static float lerp(float a, float b, float t) {
     return a + (b - a) * t;
+}
+
+static float clamp01(float v) {
+    if (v < 0.0f) return 0.0f;
+    if (v > 1.0f) return 1.0f;
+    return v;
 }
 
 // ------------------------------------------------------------
@@ -96,6 +106,9 @@ int main() {
 
     Camera cam{};
 
+    // Track which players are "ready to render"
+    std::unordered_map<uint32_t, bool> has_remote;
+
     Uint32 last_ticks = SDL_GetTicks();
     bool running = true;
 
@@ -133,7 +146,7 @@ int main() {
         pz += (sy * forward * MOVE_SPEED +  cy * strafe * STRAFE_SPEED) * dt;
         py += vertical * VERTICAL_SPEED * dt;
 
-        // Receive snapshots / ID assignment
+        // Receive snapshots
         Snapshot s;
         sockaddr_in from;
         while (net_poll_snapshot_from(s, from)) {
@@ -144,7 +157,7 @@ int main() {
             }
         }
 
-        // Send local state as Snapshot
+        // Send local snapshot
         if (local_player_id != 0) {
             Snapshot out{};
             out.player_id   = local_player_id;
@@ -182,13 +195,15 @@ int main() {
         draw_grid();
         glEnable(GL_LIGHTING);
 
+        // Local drone
         glPushMatrix();
             glTranslatef(px, py, pz);
             glRotatef(yaw * 57.2958f, 0, 1, 0);
             draw_drone(now * 0.001f);
         glPopMatrix();
 
-        double render_time = now * 0.001 - 0.1;
+        // Remote drones (SMOOTH MODE)
+        double render_time = now * 0.001 - INTERP_DELAY;
 
         for (uint32_t pid = 1; pid < 64; ++pid) {
             if (pid == local_player_id)
@@ -198,9 +213,11 @@ int main() {
             if (!replication.sample(pid, render_time, a, b))
                 continue;
 
-            float alpha = float(
-                (render_time - a.server_time) /
-                (b.server_time - a.server_time)
+            has_remote[pid] = true;
+
+            float alpha = clamp01(
+                float((render_time - a.server_time) /
+                      (b.server_time - a.server_time))
             );
 
             glPushMatrix();
@@ -209,7 +226,10 @@ int main() {
                     lerp(a.y, b.y, alpha),
                     lerp(a.z, b.z, alpha)
                 );
-                glRotatef(lerp(a.yaw, b.yaw, alpha) * 57.2958f, 0, 1, 0);
+                glRotatef(
+                    lerp(a.yaw, b.yaw, alpha) * 57.2958f,
+                    0, 1, 0
+                );
                 draw_drone(now * 0.001f);
             glPopMatrix();
         }
