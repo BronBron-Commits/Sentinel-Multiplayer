@@ -37,5 +37,5 @@ void sim_update(
     p.z +=  cy * strafe * STRAFE_SPEED * dt;
 
     // Vertical
-    p.y += pitch * VERT_SPEED * dt;
+    p.y += throttle * VERT_SPEED * dt;
 }

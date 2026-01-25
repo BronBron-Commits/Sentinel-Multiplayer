@@ -12,6 +12,7 @@ constexpr double TICK_DT = 1.0 / 60.0;
 
 struct ClientState {
     SimPlayer player{};
+    SimPlayer prev{};
     InputCmd  last_input{};
 };
 
@@ -20,16 +21,13 @@ int main() {
     net_init("0.0.0.0", 7777);
 
     SimWorld world{};
-
     std::unordered_map<uint32_t, ClientState> clients;
-    uint32_t next_player_id = 1;
-
+    uint32_t next_id = 1;
     uint32_t tick = 0;
 
-    const auto tick_dt =
-        std::chrono::duration_cast<SteadyClock::duration>(
-            std::chrono::duration<double>(TICK_DT)
-        );
+    auto tick_dt = std::chrono::duration_cast<SteadyClock::duration>(
+        std::chrono::duration<double>(TICK_DT)
+    );
 
     auto next_tick = SteadyClock::now();
     printf("[server] running\n");
@@ -38,12 +36,11 @@ int main() {
         uint8_t buf[256];
         ssize_t n;
 
-        // -------- RECEIVE --------
         while ((n = net_recv_raw(buf, sizeof(buf))) > 0) {
             auto* hdr = reinterpret_cast<PacketHeader*>(buf);
 
             if (hdr->type == PacketType::HELLO) {
-                uint32_t id = next_player_id++;
+                uint32_t id = next_id++;
                 clients[id] = ClientState{};
                 printf("[server] client joined: id=%u\n", id);
 
@@ -54,14 +51,14 @@ int main() {
             else if (hdr->type == PacketType::INPUT) {
                 auto* in = reinterpret_cast<InputCmd*>(buf);
                 auto it = clients.find(in->player_id);
-                if (it != clients.end()) {
+                if (it != clients.end())
                     it->second.last_input = *in;
-                }
             }
         }
 
-        // -------- SIMULATE --------
         for (auto& [id, c] : clients) {
+            c.prev = c.player;
+
             sim_update(
                 world,
                 c.player,
@@ -73,17 +70,21 @@ int main() {
             );
         }
 
-        // -------- BROADCAST --------
         for (auto& [id, c] : clients) {
             Snapshot s{};
             s.player_id = id;
             s.tick = tick;
             s.server_time = tick * TICK_DT;
+
             s.x = c.player.x;
             s.y = c.player.y;
             s.z = c.player.z;
             s.yaw = c.player.yaw;
             s.pitch = c.player.pitch;
+
+            s.vx = (c.player.x - c.prev.x) / TICK_DT;
+            s.vy = (c.player.y - c.prev.y) / TICK_DT;
+            s.vz = (c.player.z - c.prev.z) / TICK_DT;
 
             net_send_snapshot(s);
         }
