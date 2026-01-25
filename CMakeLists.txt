@@ -20,29 +20,35 @@ target_include_directories(sentinel_sim PUBLIC
 # ============================================================
 # NET LIBRARY
 # ============================================================
-add_library(sentinel_net
+
+add_library(sentinel_net STATIC
     src/net/net_api.cpp
 
     # replication
     src/net/replication/replication_client.cpp
     src/net/replication/snapshot_buffer.cpp
-
-    # transport
-    src/net/transport/udp_win.cpp
 )
 
-# THIS LINE IS THE FIX
 target_include_directories(sentinel_net
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 if (WIN32)
+    target_sources(sentinel_net PRIVATE
+        src/net/transport/udp_win.cpp
+    )
+
     target_link_libraries(sentinel_net
         PUBLIC
             ws2_32
     )
+else()
+    target_sources(sentinel_net PRIVATE
+        src/net/transport/udp_linux.cpp
+    )
 endif()
+
 
 # ============================================================
 # SDL2 (WINDOWS-SAFE)
@@ -58,23 +64,25 @@ else()
 endif()
 
 # ============================================================
-# CLIENT
+# CLIENT (Windows only)
 # ============================================================
-add_executable(client
-    src/client/client_main.cpp
-)
+if (WIN32)
+    add_executable(client
+        src/client/client_main.cpp
+    )
 
-target_include_directories(client PRIVATE
-    include
-    ${SDL2_INCLUDE_DIRS}
-)
+    target_include_directories(client PRIVATE
+        include
+        ${SDL2_INCLUDE_DIRS}
+    )
 
-target_link_libraries(client
-    sentinel_net
-    ${SDL2_TARGET}
-    opengl32
-    glu32
-)
+    target_link_libraries(client
+        sentinel_net
+        ${SDL2_TARGET}
+        opengl32
+        glu32
+    )
+endif()
 
 
 # ============================================================
