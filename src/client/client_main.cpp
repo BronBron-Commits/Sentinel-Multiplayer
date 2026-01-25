@@ -1,8 +1,10 @@
 #define SDL_MAIN_HANDLED
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-
 #include <windows.h>
+
+#include <winsock2.h>
+#include <ws2tcpip.h>   // <-- REQUIRED for inet_pton
 
 #include <SDL.h>
 #include <GL/gl.h>
@@ -10,22 +12,31 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
 #include "client/camera.hpp"
 
-// -----------------------------
-// Tuning
-// -----------------------------
-constexpr float MOVE_SPEED     = 6.0f;
-constexpr float STRAFE_SPEED   = 5.0f;
-constexpr float VERTICAL_SPEED = 4.0f;
-constexpr float YAW_SPEED      = 1.8f;
+#include "sentinel/net/net_api.hpp"
+#include "sentinel/net/replication/replication_client.hpp"
+#include "sentinel/net/protocol/snapshot.hpp"
 
-// -----------------------------
+// ------------------------------------------------------------
+// Tuning
+// ------------------------------------------------------------
+constexpr float YAW_SPEED = 1.8f;
+
+// ------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------
+static float lerp(float a, float b, float t) {
+    return a + (b - a) * t;
+}
+
+// ------------------------------------------------------------
 // Lighting
-// -----------------------------
+// ------------------------------------------------------------
 static void setup_lighting() {
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
@@ -40,14 +51,17 @@ static void setup_lighting() {
     glLightfv(GL_LIGHT0, GL_POSITION, dir);
 }
 
-// -----------------------------
+// ------------------------------------------------------------
 // Main
-// -----------------------------
+// ------------------------------------------------------------
 int main() {
+    setbuf(stdout, nullptr);
+
+    // ---------------- SDL / GL ----------------
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 
     SDL_Window* win = SDL_CreateWindow(
-        "Sentinel Client (Controls Restored)",
+        "Sentinel Multiplayer Client",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         1280, 720,
@@ -61,81 +75,60 @@ int main() {
     glEnable(GL_NORMALIZE);
     setup_lighting();
 
-    // -----------------------------
-    // Drone State
-    // -----------------------------
-    float px = 0.0f;
-    float py = 1.2f;
-    float pz = 0.0f;
-    float yaw = 0.0f;
+    // ---------------- Network ----------------
+    if (!net_init("146.71.76.134", 7777)) {
+        printf("[client] net_init failed\n");
+        return 1;
+    }
 
+    sockaddr_in server{};
+    server.sin_family = AF_INET;
+    server.sin_port   = htons(7777);
+    inet_pton(AF_INET, "146.71.76.134", &server.sin_addr);
+
+    PacketHeader hello{};
+    hello.type = PacketType::HELLO;
+    net_send_raw_to(&hello, sizeof(hello), server);
+    printf("[client] HELLO sent\n");
+
+    // ---------------- Replication ----------------
+    ReplicationClient replication;
+    uint32_t local_player_id = 0;
+
+    // ---------------- Camera ----------------
     Camera cam{};
 
     bool running = true;
     Uint32 last_ticks = SDL_GetTicks();
 
+    // ---------------- Main Loop ----------------
     while (running) {
         Uint32 now = SDL_GetTicks();
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
 
+        // -------- Events --------
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
                 running = false;
         }
 
-        // -----------------------------
-        // INPUT
-        // -----------------------------
-        SDL_PumpEvents();
-        const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        // -------- Receive snapshots --------
+        Snapshot s;
+        sockaddr_in from;
 
-        float forward  = 0.0f;
-        float strafe   = 0.0f;
-        float vertical = 0.0f;
-        float turn     = 0.0f;
+        while (net_poll_snapshot_from(s, from)) {
+            replication.ingest(s);
 
-        // Vertical
-        if (keys[SDL_SCANCODE_W]) vertical += 1.0f;
-        if (keys[SDL_SCANCODE_S]) vertical -= 1.0f;
+            if (local_player_id == 0) {
+                local_player_id = s.player_id;
+                printf("[client] assigned local id=%u\n", local_player_id);
+            }
+        }
 
-        // Yaw
-        if (keys[SDL_SCANCODE_A]) turn += 1.0f;
-        if (keys[SDL_SCANCODE_D]) turn -= 1.0f;
-
-        // Forward / strafe
-        if (keys[SDL_SCANCODE_UP])    forward += 1.0f;
-        if (keys[SDL_SCANCODE_DOWN])  forward -= 1.0f;
-        if (keys[SDL_SCANCODE_LEFT])  strafe  -= 1.0f;
-        if (keys[SDL_SCANCODE_RIGHT]) strafe  += 1.0f;
-
-        // -----------------------------
-        // SIM UPDATE
-        // -----------------------------
-        yaw += turn * YAW_SPEED * dt;
-
-        float cy = std::cos(yaw);
-        float sy = std::sin(yaw);
-
-        px += (cy * forward * MOVE_SPEED + -sy * strafe * STRAFE_SPEED) * dt;
-        pz += (sy * forward * MOVE_SPEED +  cy * strafe * STRAFE_SPEED) * dt;
-        py += vertical * VERTICAL_SPEED * dt;
-
-        // -----------------------------
-        // CAMERA (third-person follow)
-        // -----------------------------
-        cam.target = { px, py, pz };
-        cam.pos = {
-            px - cy * 8.0f,
-            py + 4.5f,
-            pz - sy * 8.0f
-        };
-
-        // -----------------------------
-        // RENDER
-        // -----------------------------
-        glClearColor(0.15f, 0.18f, 0.22f, 1);
+        // -------- Render --------
+        glClearColor(0.15f, 0.18f, 0.22f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
@@ -144,6 +137,11 @@ int main() {
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
+
+        // Fixed camera for now
+        cam.pos    = { 0.0f, 10.0f, 18.0f };
+        cam.target = { 0.0f,  2.0f,  0.0f };
+
         gluLookAt(
             cam.pos.x, cam.pos.y, cam.pos.z,
             cam.target.x, cam.target.y, cam.target.z,
@@ -154,16 +152,36 @@ int main() {
         draw_grid();
         glEnable(GL_LIGHTING);
 
-        glPushMatrix();
-            glTranslatef(px, py, pz);
-            glRotatef(yaw * 57.2958f, 0, 1, 0);
-            draw_drone(now * 0.001f);
-        glPopMatrix();
+        // -------- Draw ALL players --------
+        double render_time = now * 0.001 - 0.1; // 100ms interpolation delay
+
+        for (uint32_t pid = 1; pid < 64; ++pid) {
+            Snapshot a, b;
+            if (!replication.sample(pid, render_time, a, b))
+                continue;
+
+            float alpha =
+                float((render_time - a.server_time) /
+                      (b.server_time - a.server_time));
+
+            float x   = lerp(a.x,   b.x,   alpha);
+            float y   = lerp(a.y,   b.y,   alpha);
+            float z   = lerp(a.z,   b.z,   alpha);
+            float yaw = lerp(a.yaw, b.yaw, alpha);
+
+            glPushMatrix();
+                glTranslatef(x, y, z);
+                glRotatef(yaw * 57.2958f, 0, 1, 0);
+                draw_drone(now * 0.001f);
+            glPopMatrix();
+        }
 
         SDL_GL_SwapWindow(win);
         SDL_Delay(1);
     }
 
+    // ---------------- Shutdown ----------------
+    net_shutdown();
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();

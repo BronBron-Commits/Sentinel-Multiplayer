@@ -20,21 +20,29 @@ target_include_directories(sentinel_sim PUBLIC
 # ============================================================
 # NET LIBRARY
 # ============================================================
-
-add_library(sentinel_net STATIC
+add_library(sentinel_net
     src/net/net_api.cpp
+
+    # replication
     src/net/replication/replication_client.cpp
     src/net/replication/snapshot_buffer.cpp
+
+    # transport
     src/net/transport/udp_win.cpp
 )
 
-target_include_directories(sentinel_net PUBLIC
-    include
+# THIS LINE IS THE FIX
+target_include_directories(sentinel_net
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(sentinel_net PUBLIC
-    ws2_32
-)
+if (WIN32)
+    target_link_libraries(sentinel_net
+        PUBLIC
+            ws2_32
+    )
+endif()
 
 # ============================================================
 # SDL2 (WINDOWS-SAFE)
