@@ -149,6 +149,38 @@ int main() {
 
             continue;
         }
+        
+        // ----------------------------------------------------
+// MISSILE PACKET
+// ----------------------------------------------------
+        if (n == sizeof(MissileSnapshot)) {
+            MissileSnapshot ms{};
+            std::memcpy(&ms, buffer, sizeof(MissileSnapshot));
+
+            // must have HELLO'd
+            if (!addr_to_id.count(key))
+                continue;
+
+            uint32_t pid = addr_to_id[key];
+
+            // force authoritative owner id
+            ms.owner_id = pid;
+
+            // relay missile to all clients
+            for (const auto& [_, addr] : id_to_addr) {
+                sendto(
+                    sockfd,
+                    &ms,
+                    sizeof(ms),
+                    0,
+                    (sockaddr*)&addr,
+                    sizeof(addr)
+                );
+            }
+
+            continue;
+        }
+
 
         // Unknown packet → ignore
     }

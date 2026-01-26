@@ -1,11 +1,13 @@
-#pragma once
+﻿#pragma once
 #include <cstdint>
 
 enum class PacketType : uint32_t {
-    HELLO    = 1,
+    HELLO = 1,
     SNAPSHOT = 2,
-    INPUT    = 3
+    INPUT = 3,
+    MISSILE = 4   
 };
+
 
 struct PacketHeader {
     PacketType type;
@@ -41,4 +43,17 @@ struct Snapshot {
     float vx = 0.0f;
     float vy = 0.0f;
     float vz = 0.0f;
+};
+
+struct MissileSnapshot {
+    PacketHeader hdr{ PacketType::MISSILE };
+
+    uint32_t owner_id;
+    uint32_t missile_id;
+    uint32_t tick;
+
+    float x, y, z;
+    float vx, vy, vz;
+
+    uint8_t exploded; // 0 = flying, 1 = exploded
 };
