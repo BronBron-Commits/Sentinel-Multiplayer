@@ -36,6 +36,12 @@ constexpr float YAW_SPEED      = 1.8f;
 
 constexpr float CAM_BACK = 8.0f;
 constexpr float CAM_UP   = 4.5f;
+// ---- Camera zoom (mouse wheel) ----
+static float cam_distance = CAM_BACK;
+
+constexpr float CAM_MIN = 3.0f;
+constexpr float CAM_MAX = 25.0f;
+constexpr float CAM_ZOOM_SPEED = 1.2f;
 
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
@@ -217,7 +223,15 @@ int main() {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
                 running = false;
+
+            if (e.type == SDL_MOUSEWHEEL) {
+                cam_distance -= e.wheel.y * CAM_ZOOM_SPEED;
+
+                if (cam_distance < CAM_MIN) cam_distance = CAM_MIN;
+                if (cam_distance > CAM_MAX) cam_distance = CAM_MAX;
+            }
         }
+
 
         SDL_PumpEvents();
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
@@ -314,12 +328,13 @@ int main() {
             net_send_raw_to(&out, sizeof(out), server);
         }
 
-        cam.target = {px, py, pz};
+        cam.target = { px, py, pz };
         cam.pos = {
-            px - cy * CAM_BACK,
+            px - cy * cam_distance,
             py + CAM_UP,
-            pz - sy * CAM_BACK
+            pz - sy * cam_distance
         };
+
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
