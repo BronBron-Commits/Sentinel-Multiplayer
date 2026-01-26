@@ -20,12 +20,12 @@ enum class TerrainZone {
 };
 
 // ============================================================
-// Terrain tuning (SAFE SCALE)
+// Terrain tuning
 // ============================================================
 
-static constexpr int   GRID_SIZE = 96;     // half-extent
-static constexpr float GRID_SCALE = 2.0f;   // world units per cell
-static constexpr float HEIGHT_GAIN = 8.0f;   // vertical scale
+static constexpr int   GRID_SIZE = 96;
+static constexpr float GRID_SCALE = 2.0f;
+static constexpr float HEIGHT_GAIN = 8.0f;
 
 // ============================================================
 // Math helpers
@@ -77,7 +77,16 @@ static float height_at(float x, float z) {
 }
 
 // ============================================================
-// Normal computation (central difference)
+// Stable vertex jitter (CRACK-FREE)
+// ============================================================
+
+static void vertex_jitter(int gx, int gz, float& jx, float& jz) {
+    jx = (hash(gx * 17, gz * 23) - 0.5f) * 0.20f;
+    jz = (hash(gx * 31, gz * 13) - 0.5f) * 0.20f;
+}
+
+// ============================================================
+// Normals
 // ============================================================
 
 static void terrain_normal(float x, float z, float& nx, float& ny, float& nz) {
@@ -123,30 +132,73 @@ static TerrainZone classify_zone(float height, float slope, float dist) {
     return TerrainZone::Grass;
 }
 
-static void set_zone_color(TerrainZone zone) {
+static void set_zone_color(TerrainZone zone, float height, float slope, float wx, float wz) {
+    float h = std::clamp(height / HEIGHT_GAIN, 0.0f, 1.0f);
+    float ao = std::clamp(1.0f - slope * 1.4f, 0.65f, 1.0f);
+    float d = (noise(wx * 0.25f, wz * 0.25f) - 0.5f) * 0.12f;
+
+    float r, g, b;
+
     switch (zone) {
     case TerrainZone::Grass:
-        glColor3f(0.55f, 0.85f, 0.50f);
+        r = 0.30f + 0.22f * h;
+        g = 0.62f + 0.18f * h;
+        b = 0.32f;
         break;
 
     case TerrainZone::Dirt:
-        glColor3f(0.75f, 0.65f, 0.45f);
+        r = 0.50f + 0.18f * h;
+        g = 0.40f + 0.08f * h;
+        b = 0.28f;
         break;
 
-    case TerrainZone::Rock:
-        glColor3f(0.82f, 0.82f, 0.85f);
+    default:
+        r = 0.60f + 0.25f * h;
+        g = 0.60f + 0.25f * h;
+        b = 0.65f + 0.20f * h;
         break;
-
     }
-}
 
+    glColor3f(
+        (r + d) * ao,
+        (g + d) * ao,
+        (b + d) * ao
+    );
+}
 
 // ============================================================
 // Render
 // ============================================================
 
 void draw_terrain() {
+    // -------- Lighting --------
     glEnable(GL_LIGHTING);
+
+    GLfloat global_ambient[] = { 0.14f, 0.14f, 0.14f, 1.0f };
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
+
+    GLfloat sun_dir[] = { 0.4f, 1.0f, 0.3f, 0.0f };
+    GLfloat sun_color[] = { 0.60f, 0.58f, 0.55f, 1.0f };
+    glEnable(GL_LIGHT0);
+    glLightfv(GL_LIGHT0, GL_POSITION, sun_dir);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_color);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, sun_color);
+
+    GLfloat fill_dir[] = { -0.5f, 0.8f, -0.3f, 0.0f };
+    GLfloat fill_color[] = { 0.12f, 0.12f, 0.14f, 1.0f };
+    glEnable(GL_LIGHT1);
+    glLightfv(GL_LIGHT1, GL_POSITION, fill_dir);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, fill_color);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, fill_color);
+
+    // -------- Fog --------
+    glEnable(GL_FOG);
+    GLfloat fogColor[] = { 0.72f, 0.82f, 0.92f, 1.0f };
+    glFogfv(GL_FOG_COLOR, fogColor);
+    glFogf(GL_FOG_MODE, GL_LINEAR);
+    glFogf(GL_FOG_START, 85.0f);
+    glFogf(GL_FOG_END, 190.0f);
+
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     // -------- SOLID PASS --------
@@ -155,18 +207,26 @@ void draw_terrain() {
 
         for (int x = -GRID_SIZE; x <= GRID_SIZE; ++x) {
             for (int dz = 0; dz <= 1; ++dz) {
-                float wx = x * GRID_SCALE;
-                float wz = (z + dz) * GRID_SCALE;
+
+                float jx, jz;
+                vertex_jitter(x, z + dz, jx, jz);
+
+                float wx = (x + jx) * GRID_SCALE;
+                float wz = (z + dz + jz) * GRID_SCALE;
+
                 float wy = height_at(wx, wz);
+
+                float dist = path_distance(wx, wz);
+                if (dist < 2.5f)
+                    wy -= (2.5f - dist) * 0.6f;
 
                 float nx, ny, nz;
                 terrain_normal(wx, wz, nx, ny, nz);
 
                 float slope = terrain_slope(ny);
-                float dist = path_distance(wx, wz);
-
                 TerrainZone zone = classify_zone(wy, slope, dist);
-                set_zone_color(zone);
+
+                set_zone_color(zone, wy, slope, wx, wz);
 
                 glNormal3f(nx, ny, nz);
                 glVertex3f(wx, wy, wz);
@@ -200,5 +260,6 @@ void draw_terrain() {
 
     glDisable(GL_POLYGON_OFFSET_LINE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glDisable(GL_FOG);
     glEnable(GL_LIGHTING);
 }

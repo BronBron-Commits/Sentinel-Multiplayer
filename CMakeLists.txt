@@ -33,36 +33,51 @@ endif()
 # SDL2
 # ============================================================
 
+# Prefer CONFIG mode (vcpkg / official)
 find_package(SDL2 CONFIG QUIET)
 
 if (TARGET SDL2::SDL2)
     set(SDL2_TARGET SDL2::SDL2)
+elseif(TARGET SDL2::SDL2main)
+    set(SDL2_TARGET SDL2::SDL2)
 else()
+    # Fallback (older FindSDL2.cmake)
     find_package(SDL2 REQUIRED)
     set(SDL2_TARGET ${SDL2_LIBRARIES})
 endif()
 
 # ============================================================
-# CLIENT (minimal + correct)
+# CLIENT
 # ============================================================
 
 if (WIN32)
     add_executable(client
-    src/client/client_main.cpp
-    src/client/render_sky.cpp
-    src/client/render_terrain.cpp
-)
-
+        src/client/client_main.cpp
+        src/client/render_sky.cpp
+        src/client/render_terrain.cpp
+    )
 
     target_include_directories(client PRIVATE
         include
         ${SDL2_INCLUDE_DIRS}
     )
 
-    target_link_libraries(client
+    target_link_libraries(client PRIVATE
         sentinel_net
         ${SDL2_TARGET}
         opengl32
         glu32
     )
+
+    # ========================================================
+    # COPY SDL2.dll NEXT TO client.exe (CRITICAL FIX)
+    # ========================================================
+
+    if (TARGET SDL2::SDL2)
+        add_custom_command(TARGET client POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:SDL2::SDL2>
+                $<TARGET_FILE_DIR:client>
+        )
+    endif()
 endif()
