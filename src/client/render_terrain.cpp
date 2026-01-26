@@ -1,4 +1,4 @@
-#define WIN32_LEAN_AND_MEAN
+﻿#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
@@ -9,16 +9,28 @@
 
 #include "client/render_terrain.hpp"
 
-// ------------------------------------------------------------
-// Terrain tuning (SAFE, NON-COLOSSAL)
-// ------------------------------------------------------------
+// ============================================================
+// Terrain zones
+// ============================================================
+
+enum class TerrainZone {
+    Grass,
+    Dirt,
+    Rock
+};
+
+// ============================================================
+// Terrain tuning (SAFE SCALE)
+// ============================================================
+
 static constexpr int   GRID_SIZE = 96;     // half-extent
 static constexpr float GRID_SCALE = 2.0f;   // world units per cell
 static constexpr float HEIGHT_GAIN = 8.0f;   // vertical scale
 
-// ------------------------------------------------------------
+// ============================================================
 // Math helpers
-// ------------------------------------------------------------
+// ============================================================
+
 static inline float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
@@ -57,7 +69,6 @@ static float fbm(float x, float z) {
         freq *= 2.0f;
         amp *= 0.5f;
     }
-
     return value;
 }
 
@@ -65,9 +76,10 @@ static float height_at(float x, float z) {
     return fbm(x, z) * HEIGHT_GAIN;
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // Normal computation (central difference)
-// ------------------------------------------------------------
+// ============================================================
+
 static void terrain_normal(float x, float z, float& nx, float& ny, float& nz) {
     constexpr float e = 1.0f;
 
@@ -88,65 +100,100 @@ static void terrain_normal(float x, float z, float& nx, float& ny, float& nz) {
     }
 }
 
-// ------------------------------------------------------------
-// Procedural ground coloring (acts like a texture)
-// ------------------------------------------------------------
-static void terrain_color(float height, float ny) {
-    float grass = std::clamp((ny - 0.6f) * 2.0f, 0.0f, 1.0f);
-    float rock = std::clamp((height - 3.0f) * 0.15f, 0.0f, 1.0f);
-
-    float r = lerp(0.18f, 0.45f, rock);
-    float g = lerp(0.35f, 0.55f, grass);
-    float b = lerp(0.18f, 0.25f, rock);
-
-    glColor3f(r, g, b);
+static float terrain_slope(float ny) {
+    return 1.0f - ny;
 }
 
-// ------------------------------------------------------------
-// Render
-// ------------------------------------------------------------
-void draw_terrain() {
-    const int   GRID = 64;
-    const float STEP = 4.0f;
+static float path_distance(float x, float z) {
+    float path_x = std::sin(z * 0.05f) * 10.0f;
+    return std::fabs(x - path_x);
+}
 
-    // ---------------- SOLID PASS ----------------
+// ============================================================
+// Zone logic
+// ============================================================
+
+static TerrainZone classify_zone(float height, float slope, float dist) {
+    if (slope > 0.6f || height > 6.0f)
+        return TerrainZone::Rock;
+
+    if (dist < 3.0f)
+        return TerrainZone::Dirt;
+
+    return TerrainZone::Grass;
+}
+
+static void set_zone_color(TerrainZone zone) {
+    switch (zone) {
+    case TerrainZone::Grass:
+        glColor3f(0.25f, 0.6f, 0.25f);
+        break;
+    case TerrainZone::Dirt:
+        glColor3f(0.45f, 0.35f, 0.2f);
+        break;
+    case TerrainZone::Rock:
+        glColor3f(0.5f, 0.5f, 0.5f);
+        break;
+    }
+}
+
+// ============================================================
+// Render
+// ============================================================
+
+void draw_terrain() {
     glEnable(GL_LIGHTING);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    glColor3f(0.25f, 0.6f, 0.3f);
 
-    for (int z = -GRID; z < GRID; ++z) {
+    // -------- SOLID PASS --------
+    for (int z = -GRID_SIZE; z < GRID_SIZE; ++z) {
         glBegin(GL_TRIANGLE_STRIP);
-        for (int x = -GRID; x <= GRID; ++x) {
-            float h1 = sinf(x * 0.08f) * cosf(z * 0.08f) * 6.0f;
-            float h2 = sinf(x * 0.08f) * cosf((z + 1) * 0.08f) * 6.0f;
 
-            glVertex3f(x * STEP, h1, z * STEP);
-            glVertex3f(x * STEP, h2, (z + 1) * STEP);
+        for (int x = -GRID_SIZE; x <= GRID_SIZE; ++x) {
+            for (int dz = 0; dz <= 1; ++dz) {
+                float wx = x * GRID_SCALE;
+                float wz = (z + dz) * GRID_SCALE;
+                float wy = height_at(wx, wz);
+
+                float nx, ny, nz;
+                terrain_normal(wx, wz, nx, ny, nz);
+
+                float slope = terrain_slope(ny);
+                float dist = path_distance(wx, wz);
+
+                TerrainZone zone = classify_zone(wy, slope, dist);
+                set_zone_color(zone);
+
+                glNormal3f(nx, ny, nz);
+                glVertex3f(wx, wy, wz);
+            }
         }
+
         glEnd();
     }
 
-    // ---------------- GRID OVERLAY ----------------
+    // -------- WIREFRAME OVERLAY --------
     glDisable(GL_LIGHTING);
     glEnable(GL_POLYGON_OFFSET_LINE);
     glPolygonOffset(-1.0f, -1.0f);
-
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    glColor3f(0.05f, 0.15f, 0.05f); // subtle dark grid
+    glColor3f(0.05f, 0.15f, 0.05f);
 
-    for (int z = -GRID; z < GRID; ++z) {
+    for (int z = -GRID_SIZE; z < GRID_SIZE; ++z) {
         glBegin(GL_TRIANGLE_STRIP);
-        for (int x = -GRID; x <= GRID; ++x) {
-            float h1 = sinf(x * 0.08f) * cosf(z * 0.08f) * 6.0f;
-            float h2 = sinf(x * 0.08f) * cosf((z + 1) * 0.08f) * 6.0f;
 
-            glVertex3f(x * STEP, h1, z * STEP);
-            glVertex3f(x * STEP, h2, (z + 1) * STEP);
+        for (int x = -GRID_SIZE; x <= GRID_SIZE; ++x) {
+            for (int dz = 0; dz <= 1; ++dz) {
+                float wx = x * GRID_SCALE;
+                float wz = (z + dz) * GRID_SCALE;
+                float wy = height_at(wx, wz);
+                glVertex3f(wx, wy, wz);
+            }
         }
+
         glEnd();
     }
 
-    // ---------------- RESTORE STATE ----------------
     glDisable(GL_POLYGON_OFFSET_LINE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glEnable(GL_LIGHTING);
