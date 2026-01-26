@@ -26,6 +26,8 @@
 #include "sentinel/net/replication/replication_client.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
 
+
+
 // ------------------------------------------------------------
 // Tuning (VISUAL FIDELITY MODE)
 // ------------------------------------------------------------
@@ -45,6 +47,38 @@ constexpr float CAM_ZOOM_SPEED = 1.2f;
 
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
+
+static bool is_idle(const Snapshot& a, const Snapshot& b) {
+    constexpr float VEL_EPS = 0.05f;
+
+    float dvx = std::fabs(b.vx);
+    float dvy = std::fabs(b.vy);
+    float dvz = std::fabs(b.vz);
+
+    return (dvx < VEL_EPS &&
+        dvy < VEL_EPS &&
+        dvz < VEL_EPS);
+}
+struct IdlePose {
+    float y_offset;
+    float roll;
+    float pitch;
+    float yaw_offset;
+};
+
+static IdlePose compute_idle_pose(uint32_t player_id, double t) {
+    // phase offset per player so they don’t sync perfectly
+    double phase = player_id * 3.17;
+
+    IdlePose p{};
+    p.y_offset = std::sin(t * 1.2 + phase) * 0.12f;
+    p.roll = std::sin(t * 0.9 + phase) * 2.0f;
+    p.pitch = std::cos(t * 1.1 + phase) * 1.5f;
+    p.yaw_offset = std::sin(t * 0.25 + phase) * 1.0f;
+
+    return p;
+}
+
 
 // ------------------------------------------------------------
 static float lerp(float a, float b, float t) {
@@ -380,9 +414,23 @@ int main() {
         glDisable(GL_COLOR_MATERIAL);
 
 
+        bool local_idle = std::fabs(forward) < 0.01f &&
+            std::fabs(strafe) < 0.01f &&
+            std::fabs(vertical) < 0.01f &&
+            !boost_active;
+
+        IdlePose idle{};
+        if (local_idle) {
+            idle = compute_idle_pose(local_player_id, now * 0.001);
+        }
+
         glPushMatrix();
-        glTranslatef(px, py, pz);
-        glRotatef(yaw * 57.2958f, 0, 1, 0);
+        glTranslatef(px, py + idle.y_offset, pz);
+
+        glRotatef((yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
+        glRotatef(idle.pitch, 1, 0, 0);
+        glRotatef(idle.roll, 0, 0, 1);
+
 
         set_metal_material(0.65f, 0.68f, 0.72f); // brushed steel
         draw_drone(now * 0.001f);
@@ -415,6 +463,12 @@ int main() {
             float rz = lerp(a.z, b.z, alpha);
 
             float ryaw = lerp(a.yaw, b.yaw, alpha);
+            bool idle = is_idle(a, b);
+
+            IdlePose idle_pose{};
+            if (idle) {
+                idle_pose = compute_idle_pose(pid, render_time);
+            }
 
             float cy_r = std::cos(ryaw);
             float sy_r = std::sin(ryaw);
@@ -463,13 +517,17 @@ int main() {
             glPushMatrix();
             glTranslatef(
                 lerp(a.x, b.x, alpha),
-                lerp(a.y, b.y, alpha),
+                lerp(a.y, b.y, alpha) + idle_pose.y_offset,
                 lerp(a.z, b.z, alpha)
             );
+
             glRotatef(
-                lerp(a.yaw, b.yaw, alpha) * 57.2958f,
+                (ryaw + idle_pose.yaw_offset * 0.01745f) * 57.2958f,
                 0, 1, 0
             );
+            glRotatef(idle_pose.pitch, 1, 0, 0);
+            glRotatef(idle_pose.roll, 0, 0, 1);
+
 
             set_metal_material(0.6f, 0.6f, 0.65f);
             draw_drone(now * 0.001f);
