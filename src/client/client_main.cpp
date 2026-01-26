@@ -29,9 +29,9 @@
 // ------------------------------------------------------------
 // Tuning (VISUAL FIDELITY MODE)
 // ------------------------------------------------------------
-constexpr float MOVE_SPEED     = 6.0f;
-constexpr float STRAFE_SPEED   = 5.0f;
-constexpr float VERTICAL_SPEED = 4.0f;
+constexpr float MOVE_SPEED     = 9.0f;
+constexpr float STRAFE_SPEED   = 8.0f;
+constexpr float VERTICAL_SPEED = 6.0f;
 constexpr float YAW_SPEED      = 1.8f;
 
 constexpr float CAM_BACK = 8.0f;
@@ -79,6 +79,7 @@ struct TrailParticle {
 static constexpr int MAX_TRAIL = 256;
 static TrailParticle trail[MAX_TRAIL];
 static int trail_head = 0;
+static bool boost_active = false;
 
 
 static void set_metal_material(float r, float g, float b) {
@@ -99,7 +100,8 @@ static void spawn_trail(float x, float y, float z) {
     p.x = x;
     p.y = y;
     p.z = z;
-    p.life = .5f;
+    p.life = boost_active ? 0.35f : 0.5f;
+
 }
 
 static void update_trail(float dt) {
@@ -126,7 +128,11 @@ static void draw_trail() {
         float a = trail[i].life * 0.6f;
         float s = 0.08f;
 
-        glColor4f(0.6f, 0.8f, 1.0f, a);
+        if (boost_active)
+            glColor4f(1.0f, 0.25f, 0.25f, a);   // red boost
+        else
+            glColor4f(0.6f, 0.8f, 1.0f, a);     // normal
+
         glVertex3f(trail[i].x - s, trail[i].y, trail[i].z - s);
         glVertex3f(trail[i].x + s, trail[i].y, trail[i].z - s);
         glVertex3f(trail[i].x + s, trail[i].y, trail[i].z + s);
@@ -217,6 +223,7 @@ int main() {
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
         float forward = 0, strafe = 0, vertical = 0, turn = 0;
+        boost_active = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
 
         if (keys[SDL_SCANCODE_UP])    forward += 1;
         if (keys[SDL_SCANCODE_DOWN])  forward -= 1;
@@ -232,9 +239,16 @@ int main() {
         float cy = std::cos(yaw);
         float sy = std::sin(yaw);
 
-        px += (cy * forward * MOVE_SPEED + -sy * strafe * STRAFE_SPEED) * dt;
-        pz += (sy * forward * MOVE_SPEED +  cy * strafe * STRAFE_SPEED) * dt;
-        py += vertical * VERTICAL_SPEED * dt;
+        float speed_mul = boost_active ? 2.0f : 1.0f;
+
+        px += (cy * forward * MOVE_SPEED * speed_mul +
+            -sy * strafe * STRAFE_SPEED * speed_mul) * dt;
+
+        pz += (sy * forward * MOVE_SPEED * speed_mul +
+            cy * strafe * STRAFE_SPEED * speed_mul) * dt;
+
+        py += vertical * VERTICAL_SPEED * speed_mul * dt;
+
 
         // ---- Rotor trails (4x) ----
         const float rotor_radius = 0.55f;
