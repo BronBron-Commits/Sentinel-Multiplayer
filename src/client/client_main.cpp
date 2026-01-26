@@ -128,6 +128,29 @@ struct Explosion {
 static Explosion explosion;
 
 
+struct UfoNPC {
+    float x;
+    float y;
+    float z;
+
+    float base_y;
+    float hover_amp;
+    float hover_speed;
+
+    float yaw;
+};
+
+static UfoNPC g_ufo = {
+    12.0f,   // x
+    6.0f,    // y (initial)
+    -18.0f,  // z
+    6.0f,    // base_y
+    0.8f,    // hover amplitude
+    0.9f,    // hover speed
+    0.0f     // yaw
+};
+
+
 // ------------------------------------------------------------
 static float lerp(float a, float b, float t) {
     return a + (b - a) * t;
@@ -291,6 +314,44 @@ static void draw_explosion_sphere(float radius, float alpha) {
     glEnable(GL_LIGHTING);
 }
 
+static void draw_ufo()
+{
+    glEnable(GL_LIGHTING);
+    glDisable(GL_TEXTURE_2D);
+
+    // Main saucer
+    glPushMatrix();
+    glScalef(3.5f, 0.6f, 3.5f);
+
+    glBegin(GL_TRIANGLE_FAN);
+    glNormal3f(0, 1, 0);
+    glColor3f(0.7f, 0.75f, 0.8f);
+    glVertex3f(0, 0, 0);
+    for (int i = 0; i <= 32; ++i) {
+        float a = i / 32.0f * 6.28318f;
+        glVertex3f(std::cos(a), 0, std::sin(a));
+    }
+    glEnd();
+
+    glPopMatrix();
+
+    // Dome
+    glPushMatrix();
+    glTranslatef(0, 0.35f, 0);
+    glScalef(1.2f, 0.6f, 1.2f);
+
+    glBegin(GL_TRIANGLE_FAN);
+    glNormal3f(0, 1, 0);
+    glColor3f(0.4f, 0.6f, 0.9f);
+    glVertex3f(0, 0, 0);
+    for (int i = 0; i <= 32; ++i) {
+        float a = i / 32.0f * 6.28318f;
+        glVertex3f(std::cos(a), 0, std::sin(a));
+    }
+    glEnd();
+
+    glPopMatrix();
+}
 
 // ------------------------------------------------------------
 int main() {
@@ -359,7 +420,15 @@ int main() {
         Uint32 now = SDL_GetTicks();
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
+
         update_trail(dt);
+        // ---- UFO hover update ----
+        float tsec = now * 0.001f;
+
+        g_ufo.y = g_ufo.base_y +
+            std::sin(tsec * g_ufo.hover_speed) * g_ufo.hover_amp;
+
+        g_ufo.yaw += dt * 8.0f; // slow rotation
 
         if (missile.active) {
             missile.x += missile.vx * dt;
@@ -594,6 +663,22 @@ int main() {
         glDisable(GL_LIGHTING);
         draw_grid();
    
+        // ---- UFO NPC ----
+        glEnable(GL_LIGHTING);
+        glDisable(GL_COLOR_MATERIAL);
+
+        glPushMatrix();
+        glTranslatef(g_ufo.x, g_ufo.y, g_ufo.z);
+        glRotatef(g_ufo.yaw, 0, 1, 0);
+
+        set_metal_material(0.55f, 0.6f, 0.7f);
+        draw_ufo();
+
+        glPopMatrix();
+
+        glEnable(GL_COLOR_MATERIAL);
+
+
         glEnable(GL_LIGHTING);
         draw_trail();
         if (missile.active) {
