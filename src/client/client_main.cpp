@@ -100,7 +100,7 @@ static void spawn_trail(float x, float y, float z) {
     p.x = x;
     p.y = y;
     p.z = z;
-    p.life = boost_active ? 0.35f : 0.5f;
+    p.life = boost_active ? 0.7f : 0.8f;
 
 }
 
