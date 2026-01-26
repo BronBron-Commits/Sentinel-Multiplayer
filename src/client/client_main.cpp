@@ -71,6 +71,14 @@ static void setup_lighting() {
     glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE);
 }
 
+struct TrailParticle {
+    float x, y, z;
+    float life;
+};
+
+static constexpr int MAX_TRAIL = 256;
+static TrailParticle trail[MAX_TRAIL];
+static int trail_head = 0;
 
 
 static void set_metal_material(float r, float g, float b) {
@@ -83,6 +91,54 @@ static void set_metal_material(float r, float g, float b) {
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specular);
     glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 96.0f);
 }
+
+static void spawn_trail(float x, float y, float z) {
+    TrailParticle& p = trail[trail_head];
+    trail_head = (trail_head + 1) % MAX_TRAIL;
+
+    p.x = x;
+    p.y = y;
+    p.z = z;
+    p.life = .5f;
+}
+
+static void update_trail(float dt) {
+    for (int i = 0; i < MAX_TRAIL; ++i) {
+        if (trail[i].life > 0.0f) {
+            trail[i].life -= dt * 1.8f; // fade speed
+            if (trail[i].life < 0.0f)
+                trail[i].life = 0.0f;
+        }
+    }
+}
+
+static void draw_trail() {
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive glow
+    glDepthMask(GL_FALSE);
+
+    glBegin(GL_QUADS);
+    for (int i = 0; i < MAX_TRAIL; ++i) {
+        if (trail[i].life <= 0.0f)
+            continue;
+
+        float a = trail[i].life * 0.6f;
+        float s = 0.08f;
+
+        glColor4f(0.6f, 0.8f, 1.0f, a);
+        glVertex3f(trail[i].x - s, trail[i].y, trail[i].z - s);
+        glVertex3f(trail[i].x + s, trail[i].y, trail[i].z - s);
+        glVertex3f(trail[i].x + s, trail[i].y, trail[i].z + s);
+        glVertex3f(trail[i].x - s, trail[i].y, trail[i].z + s);
+    }
+    glEnd();
+
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+}
+
 
 // ------------------------------------------------------------
 int main() {
@@ -147,6 +203,7 @@ int main() {
         Uint32 now = SDL_GetTicks();
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
+        update_trail(dt);
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -176,6 +233,46 @@ int main() {
         px += (cy * forward * MOVE_SPEED + -sy * strafe * STRAFE_SPEED) * dt;
         pz += (sy * forward * MOVE_SPEED +  cy * strafe * STRAFE_SPEED) * dt;
         py += vertical * VERTICAL_SPEED * dt;
+
+        // ---- Rotor trails (4x) ----
+        const float rotor_radius = 0.55f;
+        const float rotor_height = 0.05f;
+
+        float forward_x = cy;
+        float forward_z = sy;
+
+        float right_x = -sy;
+        float right_z = cy;
+
+
+        // Front-left
+        spawn_trail(
+            px + (-right_x + forward_x) * rotor_radius,
+            py + rotor_height,
+            pz + (-right_z + forward_z) * rotor_radius
+        );
+
+        // Front-right
+        spawn_trail(
+            px + (right_x + forward_x) * rotor_radius,
+            py + rotor_height,
+            pz + (right_z + forward_z) * rotor_radius
+        );
+
+        // Back-left
+        spawn_trail(
+            px + (-right_x - forward_x) * rotor_radius,
+            py + rotor_height,
+            pz + (-right_z - forward_z) * rotor_radius
+        );
+
+        // Back-right
+        spawn_trail(
+            px + (right_x - forward_x) * rotor_radius,
+            py + rotor_height,
+            pz + (right_z - forward_z) * rotor_radius
+        );
+
 
         // Receive snapshots
         Snapshot s;
@@ -245,6 +342,7 @@ int main() {
         draw_grid();
    
         glEnable(GL_LIGHTING);
+        draw_trail();
 
         // Local drone (metallic)
         glEnable(GL_LIGHTING);
