@@ -38,6 +38,12 @@ constexpr float YAW_SPEED      = 1.8f;
 
 constexpr float CAM_BACK = 8.0f;
 constexpr float CAM_UP   = 4.5f;
+
+constexpr float MISSILE_SPEED = 28.0f;
+constexpr float MISSILE_LIFE = 4.0f;   // seconds
+constexpr float EXPLOSION_MAX_RADIUS = 6.0f;
+constexpr float EXPLOSION_DURATION = 0.6f;
+
 // ---- Camera zoom (mouse wheel) ----
 static float cam_distance = CAM_BACK;
 
@@ -78,6 +84,23 @@ static IdlePose compute_idle_pose(uint32_t player_id, double t) {
 
     return p;
 }
+
+struct Missile {
+    bool active = false;
+    float x, y, z;
+    float vx, vy, vz;
+};
+
+static Missile missile;
+
+struct Explosion {
+    bool active = false;
+    float x, y, z;
+    float radius;
+    float time;
+};
+
+static Explosion explosion;
 
 
 // ------------------------------------------------------------
@@ -185,6 +208,64 @@ static void draw_trail() {
     glEnable(GL_LIGHTING);
 }
 
+static void draw_missile() {
+    glDisable(GL_LIGHTING);
+    glColor3f(1.0f, 0.7f, 0.2f);
+
+    glBegin(GL_LINES);
+    glVertex3f(0.0f, 0.0f, 0.0f);
+    glVertex3f(-0.8f, 0.0f, 0.0f);
+    glEnd();
+
+    glEnable(GL_LIGHTING);
+}
+
+static void draw_explosion_sphere(float radius, float alpha) {
+    const int LAT = 10;
+    const int LON = 14;
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    for (int i = 0; i < LAT; ++i) {
+        float t0 = float(i) / LAT;
+        float t1 = float(i + 1) / LAT;
+
+        float phi0 = (t0 - 0.5f) * 3.14159f;
+        float phi1 = (t1 - 0.5f) * 3.14159f;
+
+        glBegin(GL_TRIANGLE_STRIP);
+        for (int j = 0; j <= LON; ++j) {
+            float u = float(j) / LON;
+            float theta = u * 6.28318f;
+
+            for (float phi : {phi0, phi1}) {
+                float x = std::cos(phi) * std::cos(theta);
+                float y = std::sin(phi);
+                float z = std::cos(phi) * std::sin(theta);
+
+                glColor4f(
+                    1.0f,
+                    0.6f - y * 0.3f,
+                    0.2f,
+                    alpha * (1.0f - t0)
+                );
+
+                glVertex3f(
+                    x * radius,
+                    y * radius,
+                    z * radius
+                );
+            }
+        }
+        glEnd();
+    }
+
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+}
+
 
 // ------------------------------------------------------------
 int main() {
@@ -253,6 +334,24 @@ int main() {
         last_ticks = now;
         update_trail(dt);
 
+        if (missile.active) {
+            missile.x += missile.vx * dt;
+            missile.y += missile.vy * dt;
+            missile.z += missile.vz * dt;
+        }
+
+        if (explosion.active) {
+            explosion.time += dt;
+
+            float t = explosion.time / EXPLOSION_DURATION;
+            explosion.radius = EXPLOSION_MAX_RADIUS * t;
+
+            if (explosion.time >= EXPLOSION_DURATION) {
+                explosion.active = false;
+            }
+        }
+
+
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT)
@@ -269,6 +368,39 @@ int main() {
 
         SDL_PumpEvents();
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        static bool prev_space = false;
+        bool space = keys[SDL_SCANCODE_SPACE];
+
+        if (space && !prev_space) {
+            if (!missile.active) {
+                // FIRE missile
+                missile.active = true;
+
+                missile.x = px + std::cos(yaw) * 1.4f;
+                missile.y = py + 0.15f;
+                missile.z = pz + std::sin(yaw) * 1.4f;
+
+                missile.vx = std::cos(yaw) * MISSILE_SPEED;
+                missile.vy = 0.0f;
+                missile.vz = std::sin(yaw) * MISSILE_SPEED;
+            }
+            else {
+                // DETONATE missile
+                missile.active = false;
+
+                explosion.active = true;
+                explosion.x = missile.x;
+                explosion.y = missile.y;
+                explosion.z = missile.z;
+                explosion.radius = 0.2f;
+                explosion.time = 0.0f;
+            }
+
+        }
+
+        prev_space = space;
+
+        prev_space = space;
 
         float forward = 0, strafe = 0, vertical = 0, turn = 0;
         boost_active = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
@@ -408,6 +540,24 @@ int main() {
    
         glEnable(GL_LIGHTING);
         draw_trail();
+        if (missile.active) {
+            glPushMatrix();
+            glTranslatef(missile.x, missile.y, missile.z);
+            glRotatef(yaw * 57.2958f, 0, 1, 0);
+            draw_missile();
+            glPopMatrix();
+        }
+
+        if (explosion.active) {
+            float t = explosion.time / EXPLOSION_DURATION;
+            float alpha = 1.0f - t;
+
+            glPushMatrix();
+            glTranslatef(explosion.x, explosion.y, explosion.z);
+            draw_explosion_sphere(explosion.radius, alpha);
+            glPopMatrix();
+        }
+
 
         // Local drone (metallic)
         glEnable(GL_LIGHTING);
