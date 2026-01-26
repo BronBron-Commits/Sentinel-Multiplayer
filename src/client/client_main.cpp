@@ -20,6 +20,7 @@
 #include "client/render_terrain.hpp"
 
 #include "client/camera.hpp"
+#include "client/render_sky.hpp"
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
@@ -184,6 +185,24 @@ int main() {
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         gluPerspective(60.0, 1280.0 / 720.0, 0.1, 500.0);
+
+        // ---- SKY (state-isolated) ----
+        glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT | GL_POLYGON_BIT);
+
+        glDisable(GL_LIGHTING);
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glDisable(GL_CULL_FACE);
+
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+
+        draw_sky(now * 0.001f);
+
+        glPopMatrix();
+
+        glPopAttrib();
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();

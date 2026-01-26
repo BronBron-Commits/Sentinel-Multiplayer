@@ -48,9 +48,11 @@ endif()
 
 if (WIN32)
     add_executable(client
-        src/client/client_main.cpp
-        src/client/render_terrain.cpp
-    )
+    src/client/client_main.cpp
+    src/client/render_sky.cpp
+    src/client/render_terrain.cpp
+)
+
 
     target_include_directories(client PRIVATE
         include
