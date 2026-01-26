@@ -151,27 +151,56 @@ int main() {
         }
         
         // ----------------------------------------------------
-// MISSILE PACKET
-// ----------------------------------------------------
-        if (n == sizeof(MissileSnapshot)) {
-            MissileSnapshot ms{};
-            std::memcpy(&ms, buffer, sizeof(MissileSnapshot));
+        // MISSILE FIRE EVENT
+        // ----------------------------------------------------
+        if (n == sizeof(MissileFireEvent)) {
+            MissileFireEvent ev{};
+            std::memcpy(&ev, buffer, sizeof(ev));
 
-            // must have HELLO'd
             if (!addr_to_id.count(key))
                 continue;
 
             uint32_t pid = addr_to_id[key];
 
-            // force authoritative owner id
-            ms.owner_id = pid;
+            // authoritative owner + time
+            ev.owner_id = pid;
+            ev.server_time = server_time();
 
-            // relay missile to all clients
             for (const auto& [_, addr] : id_to_addr) {
                 sendto(
                     sockfd,
-                    &ms,
-                    sizeof(ms),
+                    &ev,
+                    sizeof(ev),
+                    0,
+                    (sockaddr*)&addr,
+                    sizeof(addr)
+                );
+            }
+
+            continue;
+        }
+
+        // ----------------------------------------------------
+// MISSILE EXPLODE EVENT
+// ----------------------------------------------------
+        if (n == sizeof(MissileExplodeEvent)) {
+            MissileExplodeEvent ev{};
+            std::memcpy(&ev, buffer, sizeof(ev));
+
+            if (!addr_to_id.count(key))
+                continue;
+
+            uint32_t pid = addr_to_id[key];
+
+            // authoritative owner + time
+            ev.owner_id = pid;
+            ev.server_time = server_time();
+
+            for (const auto& [_, addr] : id_to_addr) {
+                sendto(
+                    sockfd,
+                    &ev,
+                    sizeof(ev),
                     0,
                     (sockaddr*)&addr,
                     sizeof(addr)

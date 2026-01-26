@@ -5,8 +5,11 @@ enum class PacketType : uint32_t {
     HELLO = 1,
     SNAPSHOT = 2,
     INPUT = 3,
-    MISSILE = 4   
+
+    MISSILE_FIRE = 4,
+    MISSILE_EXPLODE = 5
 };
+
 
 
 struct PacketHeader {
@@ -45,15 +48,25 @@ struct Snapshot {
     float vz = 0.0f;
 };
 
-struct MissileSnapshot {
-    PacketHeader hdr{ PacketType::MISSILE };
+struct MissileFireEvent {
+    PacketHeader hdr{ PacketType::MISSILE_FIRE };
 
     uint32_t owner_id;
     uint32_t missile_id;
-    uint32_t tick;
 
     float x, y, z;
     float vx, vy, vz;
 
-    uint8_t exploded; // 0 = flying, 1 = exploded
+    double server_time;
 };
+
+struct MissileExplodeEvent {
+    PacketHeader hdr{ PacketType::MISSILE_EXPLODE };
+
+    uint32_t owner_id;
+    uint32_t missile_id;
+
+    float x, y, z;
+    double server_time;
+};
+
