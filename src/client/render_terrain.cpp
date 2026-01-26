@@ -126,16 +126,20 @@ static TerrainZone classify_zone(float height, float slope, float dist) {
 static void set_zone_color(TerrainZone zone) {
     switch (zone) {
     case TerrainZone::Grass:
-        glColor3f(0.25f, 0.6f, 0.25f);
+        glColor3f(0.55f, 0.85f, 0.50f);
         break;
+
     case TerrainZone::Dirt:
-        glColor3f(0.45f, 0.35f, 0.2f);
+        glColor3f(0.75f, 0.65f, 0.45f);
         break;
+
     case TerrainZone::Rock:
-        glColor3f(0.5f, 0.5f, 0.5f);
+        glColor3f(0.82f, 0.82f, 0.85f);
         break;
+
     }
 }
+
 
 // ============================================================
 // Render

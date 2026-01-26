@@ -54,6 +54,10 @@ constexpr float CAM_ZOOM_SPEED = 1.2f;
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
 
+static int g_fb_w = 1280;
+static int g_fb_h = 720;
+
+
 static bool is_idle(const Snapshot& a, const Snapshot& b) {
     constexpr float VEL_EPS = 0.05f;
 
@@ -354,9 +358,22 @@ int main() {
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT)
-                running = false;
 
+            if (e.type == SDL_QUIT) {
+                running = false;
+            }
+
+            // ----- WINDOW RESIZE / FULLSCREEN -----
+            if (e.type == SDL_WINDOWEVENT) {
+                if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+                    e.window.event == SDL_WINDOWEVENT_RESIZED) {
+
+                    SDL_GL_GetDrawableSize(win, &g_fb_w, &g_fb_h);
+                    glViewport(0, 0, g_fb_w, g_fb_h);
+                }
+            }
+
+            // ----- MOUSE WHEEL (CAMERA ZOOM) -----
             if (e.type == SDL_MOUSEWHEEL) {
                 cam_distance -= e.wheel.y * CAM_ZOOM_SPEED;
 
@@ -364,6 +381,7 @@ int main() {
                 if (cam_distance > CAM_MAX) cam_distance = CAM_MAX;
             }
         }
+
 
 
         SDL_PumpEvents();
@@ -504,9 +522,24 @@ int main() {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // ---------- VIEWPORT (REQUIRED EVERY FRAME) ----------
+        glViewport(0, 0, g_fb_w, g_fb_h);
+
+        // ---------- PROJECTION ----------
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        gluPerspective(60.0, 1280.0 / 720.0, 0.1, 500.0);
+
+        float aspect = (g_fb_h > 0)
+            ? (float)g_fb_w / (float)g_fb_h
+            : 1.0f;
+
+        gluPerspective(60.0f, aspect, 0.1f, 500.0f);
+
+        // ---------- MODELVIEW ----------
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
+
 
         // ---- SKY (state-isolated) ----
         glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT | GL_POLYGON_BIT);

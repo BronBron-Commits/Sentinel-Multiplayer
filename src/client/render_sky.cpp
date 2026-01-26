@@ -23,17 +23,18 @@ void draw_sky(float t) {
     // ---- Dark blue night gradient ----
     glBegin(GL_QUADS);
 
-    // Horizon (slightly lighter)
-    glColor3f(0.05f, 0.10f, 0.22f);
+    // ---- Bottom (horizon) – BRIGHT ----
+    glColor3f(0.85f, 0.90f, 1.00f);
     glVertex2f(-1.0f, -1.0f);
     glVertex2f(1.0f, -1.0f);
 
-    // Zenith (deep night blue)
-    glColor3f(0.01f, 0.03f, 0.12f);
+    // ---- Top (zenith) – DARKER ----
+    glColor3f(0.55f, 0.70f, 0.95f);
     glVertex2f(1.0f, 1.0f);
     glVertex2f(-1.0f, 1.0f);
 
     glEnd();
+
 
     // ---- Restore matrices ----
     glPopMatrix();
