@@ -106,33 +106,48 @@ static void terrain_color(float height, float ny) {
 // Render
 // ------------------------------------------------------------
 void draw_terrain() {
+    const int   GRID = 64;
+    const float STEP = 4.0f;
+
+    // ---------------- SOLID PASS ----------------
     glEnable(GL_LIGHTING);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glColor3f(0.25f, 0.6f, 0.3f);
 
-    for (int z = -GRID_SIZE; z < GRID_SIZE; ++z) {
+    for (int z = -GRID; z < GRID; ++z) {
         glBegin(GL_TRIANGLE_STRIP);
+        for (int x = -GRID; x <= GRID; ++x) {
+            float h1 = sinf(x * 0.08f) * cosf(z * 0.08f) * 6.0f;
+            float h2 = sinf(x * 0.08f) * cosf((z + 1) * 0.08f) * 6.0f;
 
-        for (int x = -GRID_SIZE; x <= GRID_SIZE; ++x) {
-            float wx0 = float(x) * GRID_SCALE;
-            float wz0 = float(z) * GRID_SCALE;
-            float wy0 = height_at(wx0, wz0);
-
-            float nx, ny, nz;
-            terrain_normal(wx0, wz0, nx, ny, nz);
-            glNormal3f(nx, ny, nz);
-            terrain_color(wy0, ny);
-            glVertex3f(wx0, wy0, wz0);
-
-            float wx1 = float(x) * GRID_SCALE;
-            float wz1 = float(z + 1) * GRID_SCALE;
-            float wy1 = height_at(wx1, wz1);
-
-            terrain_normal(wx1, wz1, nx, ny, nz);
-            glNormal3f(nx, ny, nz);
-            terrain_color(wy1, ny);
-            glVertex3f(wx1, wy1, wz1);
+            glVertex3f(x * STEP, h1, z * STEP);
+            glVertex3f(x * STEP, h2, (z + 1) * STEP);
         }
-
         glEnd();
     }
+
+    // ---------------- GRID OVERLAY ----------------
+    glDisable(GL_LIGHTING);
+    glEnable(GL_POLYGON_OFFSET_LINE);
+    glPolygonOffset(-1.0f, -1.0f);
+
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glColor3f(0.05f, 0.15f, 0.05f); // subtle dark grid
+
+    for (int z = -GRID; z < GRID; ++z) {
+        glBegin(GL_TRIANGLE_STRIP);
+        for (int x = -GRID; x <= GRID; ++x) {
+            float h1 = sinf(x * 0.08f) * cosf(z * 0.08f) * 6.0f;
+            float h2 = sinf(x * 0.08f) * cosf((z + 1) * 0.08f) * 6.0f;
+
+            glVertex3f(x * STEP, h1, z * STEP);
+            glVertex3f(x * STEP, h2, (z + 1) * STEP);
+        }
+        glEnd();
+    }
+
+    // ---------------- RESTORE STATE ----------------
+    glDisable(GL_POLYGON_OFFSET_LINE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glEnable(GL_LIGHTING);
 }
