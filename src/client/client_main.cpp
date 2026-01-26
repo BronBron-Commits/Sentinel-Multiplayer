@@ -57,13 +57,31 @@ static void setup_lighting() {
     glEnable(GL_LIGHT0);
     glEnable(GL_COLOR_MATERIAL);
 
-    GLfloat ambient[] = {0.35f, 0.35f, 0.35f, 1.0f};
-    GLfloat diffuse[] = {1.0f,  1.0f,  1.0f,  1.0f};
-    GLfloat dir[]     = {-0.3f, -1.0f, -0.2f, 0.0f};
+    GLfloat ambient[] = { 0.18f, 0.18f, 0.18f, 1.0f };   // lower ambient
+    GLfloat diffuse[] = { 1.0f,  1.0f,  1.0f,  1.0f };
+    GLfloat specular[] = { 1.0f,  1.0f,  1.0f,  1.0f };
+    GLfloat dir[] = { -0.3f, -1.0f, -0.2f, 0.0f };
 
-    glLightfv(GL_LIGHT0, GL_AMBIENT,  ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE,  diffuse);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, specular);
     glLightfv(GL_LIGHT0, GL_POSITION, dir);
+
+    // IMPORTANT: enable specular math in viewer space
+    glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE);
+}
+
+
+
+static void set_metal_material(float r, float g, float b) {
+    GLfloat ambient[] = { r * 0.15f, g * 0.15f, b * 0.15f, 1.0f };
+    GLfloat diffuse[] = { r, g, b, 1.0f };
+    GLfloat specular[] = { 0.95f, 0.95f, 0.95f, 1.0f };
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 96.0f);
 }
 
 // ------------------------------------------------------------
@@ -86,6 +104,16 @@ int main() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_NORMALIZE);
     setup_lighting();
+
+    GLfloat rim_diffuse[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+    GLfloat rim_specular[] = { 0.6f, 0.6f, 0.6f, 1.0f };
+    GLfloat rim_dir[] = { 0.4f, -0.6f, 0.7f, 0.0f };
+
+    glEnable(GL_LIGHT1);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, rim_diffuse);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, rim_specular);
+    glLightfv(GL_LIGHT1, GL_POSITION, rim_dir);
+
 
     if (!net_init("146.71.76.134", 7777)) {
         printf("[client] net_init failed\n");
@@ -218,12 +246,20 @@ int main() {
    
         glEnable(GL_LIGHTING);
 
-        // Local drone
+        // Local drone (metallic)
+        glEnable(GL_LIGHTING);
+        glDisable(GL_COLOR_MATERIAL);
+
         glPushMatrix();
-            glTranslatef(px, py, pz);
-            glRotatef(yaw * 57.2958f, 0, 1, 0);
-            draw_drone(now * 0.001f);
+        glTranslatef(px, py, pz);
+        glRotatef(yaw * 57.2958f, 0, 1, 0);
+
+        set_metal_material(0.65f, 0.68f, 0.72f); // brushed steel
+        draw_drone(now * 0.001f);
         glPopMatrix();
+
+        glEnable(GL_COLOR_MATERIAL);
+
 
         // Remote drones (SMOOTH MODE)
         double render_time = now * 0.001 - INTERP_DELAY;
@@ -243,18 +279,26 @@ int main() {
                       (b.server_time - a.server_time))
             );
 
+            glEnable(GL_LIGHTING);
+            glDisable(GL_COLOR_MATERIAL);
+
             glPushMatrix();
-                glTranslatef(
-                    lerp(a.x, b.x, alpha),
-                    lerp(a.y, b.y, alpha),
-                    lerp(a.z, b.z, alpha)
-                );
-                glRotatef(
-                    lerp(a.yaw, b.yaw, alpha) * 57.2958f,
-                    0, 1, 0
-                );
-                draw_drone(now * 0.001f);
+            glTranslatef(
+                lerp(a.x, b.x, alpha),
+                lerp(a.y, b.y, alpha),
+                lerp(a.z, b.z, alpha)
+            );
+            glRotatef(
+                lerp(a.yaw, b.yaw, alpha) * 57.2958f,
+                0, 1, 0
+            );
+
+            set_metal_material(0.6f, 0.6f, 0.65f);
+            draw_drone(now * 0.001f);
             glPopMatrix();
+
+            glEnable(GL_COLOR_MATERIAL);
+
         }
 
         SDL_GL_SwapWindow(win);
