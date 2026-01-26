@@ -27,6 +27,12 @@ static constexpr int   GRID_SIZE = 96;
 static constexpr float GRID_SCALE = 2.0f;
 static constexpr float HEIGHT_GAIN = 8.0f;
 
+// Grass tuning (PERFORMANCE CRITICAL)
+static constexpr float GRASS_NEAR_DIST = 22.0f;
+static constexpr float GRASS_FAR_DIST = 40.0f;
+static constexpr float GRASS_HEIGHT = 0.5f;
+static constexpr float GRASS_WIDTH = 0.045f;
+
 // ============================================================
 // Math helpers
 // ============================================================
@@ -132,6 +138,10 @@ static TerrainZone classify_zone(float height, float slope, float dist) {
     return TerrainZone::Grass;
 }
 
+// ============================================================
+// Terrain coloring
+// ============================================================
+
 static void set_zone_color(TerrainZone zone, float height, float slope, float wx, float wz) {
     float h = std::clamp(height / HEIGHT_GAIN, 0.0f, 1.0f);
     float ao = std::clamp(1.0f - slope * 1.4f, 0.65f, 1.0f);
@@ -145,13 +155,11 @@ static void set_zone_color(TerrainZone zone, float height, float slope, float wx
         g = 0.62f + 0.18f * h;
         b = 0.32f;
         break;
-
     case TerrainZone::Dirt:
         r = 0.50f + 0.18f * h;
         g = 0.40f + 0.08f * h;
         b = 0.28f;
         break;
-
     default:
         r = 0.60f + 0.25f * h;
         g = 0.60f + 0.25f * h;
@@ -164,6 +172,81 @@ static void set_zone_color(TerrainZone zone, float height, float slope, float wx
         (g + d) * ao,
         (b + d) * ao
     );
+}
+
+// ============================================================
+// Grass rendering (SAFE + FAST)
+// ============================================================
+
+static void draw_grass() {
+    glDisable(GL_LIGHTING);
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.2f);
+
+    glColor3f(0.35f, 0.70f, 0.35f);
+
+    for (int z = -GRID_SIZE; z < GRID_SIZE; ++z) {
+        for (int x = -GRID_SIZE; x < GRID_SIZE; ++x) {
+
+            // Deterministic density
+            if (hash(x, z) > 0.12f)
+                continue;
+
+            float jx, jz;
+            vertex_jitter(x, z, jx, jz);
+
+            float wx = (x + 0.5f + jx) * GRID_SCALE;
+            float wz = (z + 0.5f + jz) * GRID_SCALE;
+
+            float dist = std::sqrt(wx * wx + wz * wz);
+            if (dist > GRASS_FAR_DIST)
+                continue;
+
+            // Mid-range density drop
+            if (dist > GRASS_NEAR_DIST && hash(x + 19, z + 73) > 0.3f)
+                continue;
+
+            float wy = height_at(wx, wz);
+
+            float slope = terrain_slope(1.0f); // cheap approx
+            if (slope > 0.5f)
+                continue;
+
+            int strands = 3 + int(hash(x + 41, z + 97) * 4); // 3–6 strands per cell
+
+
+            for (int i = 0; i < strands; ++i) {
+
+                float ox = (hash(x + i * 13, z + i * 29) - 0.5f) * 0.6f;
+                float oz = (hash(x + i * 31, z + i * 17) - 0.5f) * 0.6f;
+
+                float px = wx + ox;
+                float pz = wz + oz;
+
+                float h = GRASS_HEIGHT * (0.6f + hash(x + i * 7, z + i * 11));
+
+                glBegin(GL_QUADS);
+
+                // Quad 1
+                glVertex3f(px - GRASS_WIDTH, wy, px == px ? pz : pz);
+                glVertex3f(px + GRASS_WIDTH, wy, pz);
+                glVertex3f(px + GRASS_WIDTH, wy + h, pz);
+                glVertex3f(px - GRASS_WIDTH, wy + h, pz);
+
+                // Quad 2 (cross)
+                glVertex3f(px, wy, pz - GRASS_WIDTH);
+                glVertex3f(px, wy, pz + GRASS_WIDTH);
+                glVertex3f(px, wy + h, pz + GRASS_WIDTH);
+                glVertex3f(px, wy + h, pz - GRASS_WIDTH);
+
+                glEnd();
+            }
+
+        }
+    }
+
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_LIGHTING);
 }
 
 // ============================================================
@@ -201,7 +284,7 @@ void draw_terrain() {
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    // -------- SOLID PASS --------
+    // -------- TERRAIN --------
     for (int z = -GRID_SIZE; z < GRID_SIZE; ++z) {
         glBegin(GL_TRIANGLE_STRIP);
 
@@ -213,7 +296,6 @@ void draw_terrain() {
 
                 float wx = (x + jx) * GRID_SCALE;
                 float wz = (z + dz + jz) * GRID_SCALE;
-
                 float wy = height_at(wx, wz);
 
                 float dist = path_distance(wx, wz);
@@ -227,39 +309,16 @@ void draw_terrain() {
                 TerrainZone zone = classify_zone(wy, slope, dist);
 
                 set_zone_color(zone, wy, slope, wx, wz);
-
                 glNormal3f(nx, ny, nz);
                 glVertex3f(wx, wy, wz);
             }
         }
-
         glEnd();
     }
 
-    // -------- WIREFRAME OVERLAY --------
-    glDisable(GL_LIGHTING);
-    glEnable(GL_POLYGON_OFFSET_LINE);
-    glPolygonOffset(-1.0f, -1.0f);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    glColor3f(0.05f, 0.15f, 0.05f);
+    // -------- GRASS PASS --------
+    draw_grass();
 
-    for (int z = -GRID_SIZE; z < GRID_SIZE; ++z) {
-        glBegin(GL_TRIANGLE_STRIP);
-
-        for (int x = -GRID_SIZE; x <= GRID_SIZE; ++x) {
-            for (int dz = 0; dz <= 1; ++dz) {
-                float wx = x * GRID_SCALE;
-                float wz = (z + dz) * GRID_SCALE;
-                float wy = height_at(wx, wz);
-                glVertex3f(wx, wy, wz);
-            }
-        }
-
-        glEnd();
-    }
-
-    glDisable(GL_POLYGON_OFFSET_LINE);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_FOG);
     glEnable(GL_LIGHTING);
 }
