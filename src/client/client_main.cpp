@@ -316,16 +316,16 @@ static void draw_explosion_sphere(float radius, float alpha) {
 
 static void draw_ufo()
 {
+    // ---------- SAUCER BODY ----------
     glEnable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
 
-    // Main saucer
     glPushMatrix();
     glScalef(3.5f, 0.6f, 3.5f);
 
     glBegin(GL_TRIANGLE_FAN);
     glNormal3f(0, 1, 0);
-    glColor3f(0.7f, 0.75f, 0.8f);
+    glColor3f(0.65f, 0.7f, 0.75f);
     glVertex3f(0, 0, 0);
     for (int i = 0; i <= 32; ++i) {
         float a = i / 32.0f * 6.28318f;
@@ -335,23 +335,75 @@ static void draw_ufo()
 
     glPopMatrix();
 
-    // Dome
+
+    // ---------- GLOW RING ----------
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glDepthMask(GL_FALSE);
+
+    glBegin(GL_TRIANGLE_STRIP);
+    for (int i = 0; i <= 64; ++i) {
+        float a = i / 64.0f * 6.28318f;
+        float ca = std::cos(a);
+        float sa = std::sin(a);
+
+        // inner ring
+        glColor4f(0.2f, 0.8f, 1.0f, 0.35f);
+        glVertex3f(ca * 2.9f, -0.05f, sa * 2.9f);
+
+        // outer ring
+        glColor4f(0.2f, 0.8f, 1.0f, 0.0f);
+        glVertex3f(ca * 3.6f, -0.05f, sa * 3.6f);
+    }
+    glEnd();
+
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+
+
+    // ---------- GLASS DOME ----------
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glPushMatrix();
-    glTranslatef(0, 0.35f, 0);
-    glScalef(1.2f, 0.6f, 1.2f);
+    glTranslatef(0.0f, 0.05f, 0.0f);
+    glScalef(2.0f, 1.6f, 2.0f);
 
-    glBegin(GL_TRIANGLE_FAN);
-    glNormal3f(0, 1, 0);
-    glColor3f(0.4f, 0.6f, 0.9f);
-    glVertex3f(0, 0, 0);
-    for (int i = 0; i <= 32; ++i) {
-        float a = i / 32.0f * 6.28318f;
-        glVertex3f(std::cos(a), 0, std::sin(a));
+    const int LAT = 10;
+    const int LON = 16;
+
+    for (int i = 0; i < LAT; ++i) {
+        float t0 = float(i) / LAT;
+        float t1 = float(i + 1) / LAT;
+
+        float phi0 = t0 * 1.5708f; // 0..pi/2
+        float phi1 = t1 * 1.5708f;
+
+        glBegin(GL_TRIANGLE_STRIP);
+        for (int j = 0; j <= LON; ++j) {
+            float theta = float(j) / LON * 6.28318f;
+
+            for (float phi : {phi0, phi1}) {
+                float x = std::cos(theta) * std::sin(phi);
+                float y = std::cos(phi);
+                float z = std::sin(theta) * std::sin(phi);
+
+                glNormal3f(x, y, z);
+                glColor4f(0.5f, 0.7f, 1.0f, 0.35f); // glass tint
+
+                glVertex3f(x, y, z);
+            }
+        }
+        glEnd();
     }
-    glEnd();
 
     glPopMatrix();
+
+    glDisable(GL_BLEND);
 }
+
 
 // ------------------------------------------------------------
 int main() {
