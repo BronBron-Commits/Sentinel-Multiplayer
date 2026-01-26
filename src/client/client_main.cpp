@@ -60,6 +60,24 @@ constexpr double INTERP_DELAY = 0.45; // seconds
 static int g_fb_w = 1280;
 static int g_fb_h = 720;
 
+static void upload_fixed_matrices()
+{
+    GLfloat model[16];
+    GLfloat view[16];
+    GLfloat proj[16];
+
+    glGetFloatv(GL_MODELVIEW_MATRIX, view);
+    glGetFloatv(GL_PROJECTION_MATRIX, proj);
+
+    // model = identity (we bake transforms before calling)
+    for (int i = 0; i < 16; ++i)
+        model[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+
+    glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
+    glUniformMatrix4fv(uView, 1, GL_FALSE, view);
+    glUniformMatrix4fv(uProj, 1, GL_FALSE, proj);
+}
+
 
 static bool is_idle(const Snapshot& a, const Snapshot& b) {
     constexpr float VEL_EPS = 0.05f;
@@ -699,8 +717,7 @@ int main() {
             );
 
 
-            glEnable(GL_LIGHTING);
-            glDisable(GL_COLOR_MATERIAL);
+            
 
             glPushMatrix();
             glTranslatef(
@@ -716,10 +733,40 @@ int main() {
             glRotatef(idle_pose.pitch, 1, 0, 0);
             glRotatef(idle_pose.roll, 0, 0, 1);
 
+            // ---------------- SHADER PATH ----------------
+            glDisable(GL_LIGHTING);
+            glUseProgram(g_drone_program);
 
-            set_metal_material(0.6f, 0.6f, 0.65f);
+            // Camera
+            glUniform3f(
+                uCameraPos,
+                cam.pos.x,
+                cam.pos.y,
+                cam.pos.z
+            );
+
+            // Lighting
+            glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
+            glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
+
+            // Material (remote drones slightly duller)
+            glUniform3f(uBaseColor, 0.6f, 0.6f, 0.65f);
+            glUniform1f(uMetallic, 0.80f);
+            glUniform1f(uRoughness, 0.40f);
+
+            // Matrices (pull from fixed pipeline)
+            upload_fixed_matrices();
+
+            // Draw
             draw_drone(now * 0.001f);
+
+            // Restore state
+            glUseProgram(0);
+            glEnable(GL_LIGHTING);
+            // ------------------------------------------------
+
             glPopMatrix();
+
 
             glEnable(GL_COLOR_MATERIAL);
 

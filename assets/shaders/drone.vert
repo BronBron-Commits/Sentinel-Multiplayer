@@ -14,7 +14,7 @@ void main()
 {
     vec4 world = uModel * vec4(aPos, 1.0);
     vWorldPos = world.xyz;
-    vNormal   = mat3(transpose(inverse(uModel))) * aNormal;
+    vNormal = mat3(transpose(inverse(uModel))) * aNormal;
 
     gl_Position = uProj * uView * world;
 }
