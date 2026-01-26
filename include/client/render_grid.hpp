@@ -1,5 +1,5 @@
 #pragma once
-#include <GL/gl.h>
+#include <glad/glad.h>
 
 inline void draw_grid(int half = 50, float step = 1.0f) {
     glLineWidth(1.0f);

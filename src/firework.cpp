@@ -2,7 +2,9 @@
 #define NOMINMAX
 #include <windows.h>
 
-#include <GL/gl.h>
+#include <glad/glad.h>
+#include <SDL.h>
+
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>

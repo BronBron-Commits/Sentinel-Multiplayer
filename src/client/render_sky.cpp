@@ -2,7 +2,9 @@
 #define NOMINMAX
 #include <windows.h>        // ✅ MUST come first on Windows
 
-#include <GL/gl.h>          // now safe
+#include <glad/glad.h>
+#include <SDL.h>
+
 #include <cmath>
 
 #include "client/render_sky.hpp"

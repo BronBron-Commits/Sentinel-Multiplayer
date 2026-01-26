@@ -7,8 +7,10 @@
 #include <ws2tcpip.h>
 
 #include <SDL.h>
-#include <GL/gl.h>
+#include <glad/glad.h>
+#include <SDL.h>
 #include <GL/glu.h>
+
 
 #include <cmath>
 #include <cstdio>
@@ -18,6 +20,7 @@
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
 #include "client/render_terrain.hpp"
+#include "client/render_drone_shader.hpp"
 
 #include "client/camera.hpp"
 #include "client/render_sky.hpp"
@@ -288,6 +291,8 @@ int main() {
 
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
+    init_drone_shader();
+
     SDL_GL_SetSwapInterval(1);
 
     glEnable(GL_DEPTH_TEST);
