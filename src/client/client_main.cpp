@@ -151,8 +151,10 @@ int main() {
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         1280, 720,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
+
+
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
     SDL_GL_SetSwapInterval(1);
@@ -348,6 +350,7 @@ int main() {
         glEnable(GL_LIGHTING);
         glDisable(GL_COLOR_MATERIAL);
 
+
         glPushMatrix();
         glTranslatef(px, py, pz);
         glRotatef(yaw * 57.2958f, 0, 1, 0);
@@ -376,6 +379,54 @@ int main() {
                 float((render_time - a.server_time) /
                       (b.server_time - a.server_time))
             );
+
+            // ---- Remote rotor trails (derived locally) ----
+            float rx = lerp(a.x, b.x, alpha);
+            float ry = lerp(a.y, b.y, alpha);
+            float rz = lerp(a.z, b.z, alpha);
+
+            float ryaw = lerp(a.yaw, b.yaw, alpha);
+
+            float cy_r = std::cos(ryaw);
+            float sy_r = std::sin(ryaw);
+
+            // Same basis as local player
+            float fwd_x = cy_r;
+            float fwd_z = sy_r;
+            float right_x = -sy_r;
+            float right_z = cy_r;
+
+            const float rotor_radius = 0.55f;
+            const float rotor_height = 0.05f;
+
+            // Front-left
+            spawn_trail(
+                rx + (-right_x + fwd_x) * rotor_radius,
+                ry + rotor_height,
+                rz + (-right_z + fwd_z) * rotor_radius
+            );
+
+            // Front-right
+            spawn_trail(
+                rx + (right_x + fwd_x) * rotor_radius,
+                ry + rotor_height,
+                rz + (right_z + fwd_z) * rotor_radius
+            );
+
+            // Back-left
+            spawn_trail(
+                rx + (-right_x - fwd_x) * rotor_radius,
+                ry + rotor_height,
+                rz + (-right_z - fwd_z) * rotor_radius
+            );
+
+            // Back-right
+            spawn_trail(
+                rx + (right_x - fwd_x) * rotor_radius,
+                ry + rotor_height,
+                rz + (right_z - fwd_z) * rotor_radius
+            );
+
 
             glEnable(GL_LIGHTING);
             glDisable(GL_COLOR_MATERIAL);
