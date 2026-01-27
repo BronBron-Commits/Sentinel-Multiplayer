@@ -141,6 +141,12 @@ static int g_fb_h = 720;
 static bool chat_active = false;
 static std::string chat_buffer;
 
+// ------------------------------------------------------------
+// Remote player names (client-side cache)
+// ------------------------------------------------------------
+static std::unordered_map<uint32_t, std::string> g_player_names;
+
+
 static void measure_text(
     const std::string& s,
     int& w,
@@ -241,6 +247,8 @@ static IdlePose compute_idle_pose(uint32_t player_id, double t) {
 
     return p;
 }
+
+
 
 struct Missile {
     bool active = false;
@@ -1530,10 +1538,14 @@ SDL_StartTextInput();
                 ChatMessage msg{};
                 memcpy(&msg, packet, sizeof(msg));
 
+                // Cache player name by ID
+                g_player_names[msg.player_id] = msg.name;
+
                 std::string line =
                     std::string(msg.name) + ": " + std::string(msg.text);
                 push_chat_line(line);
             }
+
         }
 
 
@@ -1780,14 +1792,6 @@ draw_low_clouds(cam, now * 0.001f);
 
             glPopMatrix();
 
-            // ---------- LOCAL PLAYER NAME TAG ----------
-            draw_name_billboard(
-                cam,
-                px,
-                py + 1.6f,
-                pz,
-                player_name
-            );
 
             glEnable(GL_COLOR_MATERIAL);
         }
@@ -1868,6 +1872,15 @@ draw_low_clouds(cam, now * 0.001f);
 
 
         glEnable(GL_COLOR_MATERIAL);
+
+        // ---------- LOCAL PLAYER NAME TAG ----------
+        draw_name_billboard(
+            cam,
+            px,
+            py + idle.y_offset + 1.6f,
+            pz,
+            player_name
+        );
 
 
         // Remote drones (SMOOTH MODE)
@@ -1996,6 +2009,25 @@ draw_low_clouds(cam, now * 0.001f);
 
             glPopMatrix();
             
+            // ---------- REMOTE PLAYER NAME TAG ----------
+            {
+                float nx = lerp(a.x, b.x, alpha);
+                float ny = lerp(a.y, b.y, alpha) + 1.6f;
+                float nz = lerp(a.z, b.z, alpha);
+
+                auto it = g_player_names.find(pid);
+                const std::string& remote_name =
+                    (it != g_player_names.end()) ? it->second : std::string("Player");
+
+                draw_name_billboard(
+                    cam,
+                    nx,
+                    ny,
+                    nz,
+                    remote_name
+                );
+            }
+
 
 
             glEnable(GL_COLOR_MATERIAL);
