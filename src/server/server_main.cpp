@@ -15,6 +15,8 @@
 static int sockfd = -1;
 static uint32_t next_player_id = 1;
 
+static std::unordered_map<uint32_t, std::string> player_names;
+
 // addr_key -> player_id
 static std::unordered_map<uint64_t, uint32_t> addr_to_id;
 
@@ -81,40 +83,30 @@ int main() {
         // ----------------------------------------------------
         // HELLO PACKET
         // ----------------------------------------------------
-        if (n == sizeof(PacketHeader)) {
-            auto* hdr = reinterpret_cast<PacketHeader*>(buffer);
+        if (n == sizeof(ChatMessage)) {
+            ChatMessage msg{};
+            memcpy(&msg, buffer, sizeof(msg));
 
-            if (hdr->type != PacketType::HELLO)
+            if (!addr_to_id.count(key))
                 continue;
 
-            if (!addr_to_id.count(key)) {
-                uint32_t id = next_player_id++;
-                addr_to_id[key] = id;
-                id_to_addr[id] = from;
+            uint32_t pid = addr_to_id[key];
+            msg.player_id = pid;
 
-                printf("[server] HELLO -> assigned id=%u\n", id);
+            if (!player_names.count(pid)) {
+                player_names[pid] = msg.name; // first name wins
+            }
 
-                // Send initial snapshot so client learns ID
-                Snapshot init{};
-                init.player_id   = id;
-                init.x = init.y = init.z = 0.0f;
-                init.yaw         = 0.0f;
-                init.server_time = server_time();
+            strncpy(msg.name, player_names[pid].c_str(), MAX_NAME_LEN - 1);
 
-                players[id] = init;
-
-                sendto(
-                    sockfd,
-                    &init,
-                    sizeof(init),
-                    0,
-                    (sockaddr*)&from,
-                    sizeof(from)
-                );
+            for (const auto& [_, addr] : id_to_addr) {
+                sendto(sockfd, &msg, sizeof(msg), 0,
+                    (sockaddr*)&addr, sizeof(addr));
             }
 
             continue;
         }
+
 
         // ----------------------------------------------------
         // SNAPSHOT PACKET

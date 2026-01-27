@@ -541,15 +541,7 @@ int main() {
 
     glClearColor(0.05f, 0.07f, 0.10f, 1.0f);
 
-    g_chat_font = TTF_OpenFont(
-        "assets/fonts/DejaVuSans-Bold.ttf",
-        16
-    );
 
-    if (!g_chat_font) {
-        printf("[chat] Failed to load font: %s\n", TTF_GetError());
-        return 1;
-    }
 
 
     init_drone_shader();
@@ -641,26 +633,20 @@ int main() {
 // Chat input handling
 // ------------------------------------------------------------
             if (e.type == SDL_KEYDOWN) {
+
                 if (e.key.keysym.sym == SDLK_RETURN ||
                     e.key.keysym.sym == SDLK_KP_ENTER) {
 
-                    if (!chat_active) {
-                        chat_active = true;
-                        chat_buffer.clear();
-                    }
-                    if (!chat_buffer.empty()) {
+                    if (chat_active && !chat_buffer.empty()) {
                         ChatMessage msg{};
                         msg.player_id = local_player_id;
                         strncpy(msg.name, "Player", MAX_NAME_LEN - 1);
                         strncpy(msg.text, chat_buffer.c_str(), MAX_CHAT_TEXT - 1);
-
                         net_send_raw_to(&msg, sizeof(msg), server);
-
-                        chat_buffer.clear();
                     }
 
-                        chat_active = false;
-                    }
+                    chat_active = !chat_active;
+                    chat_buffer.clear();
                     continue;
                 }
 
@@ -676,6 +662,7 @@ int main() {
                     continue;
                 }
             }
+
 
             if (chat_active && e.type == SDL_TEXTINPUT) {
                 chat_buffer += e.text.text;
@@ -820,25 +807,33 @@ int main() {
         );
 
 
-        // Receive snapshots
-        Snapshot s;
-        sockaddr_in from;
-        while (net_poll_snapshot_from(s, from)) {
-            replication.ingest(s);
-            if (local_player_id == 0) {
-                local_player_id = s.player_id;
-                printf("[client] assigned id=%u\n", local_player_id);
+        uint8_t packet[512];
+        sockaddr_in from{};
+        ssize_t n;
+
+        while ((n = net_recv_raw_from(packet, sizeof(packet), from)) > 0) {
+
+            if (n == sizeof(Snapshot)) {
+                Snapshot s{};
+                memcpy(&s, packet, sizeof(s));
+                replication.ingest(s);
+
+                if (local_player_id == 0) {
+                    local_player_id = s.player_id;
+                    printf("[client] assigned id=%u\n", local_player_id);
+                }
+            }
+            else if (n == sizeof(ChatMessage)) {
+                ChatMessage msg{};
+                memcpy(&msg, packet, sizeof(msg));
+
+                std::string line =
+                    std::string(msg.name) + ": " + std::string(msg.text);
+                push_chat_line(line);
             }
         }
 
-        ChatMessage chat{};
-        sockaddr_in chat_from{};
 
-        while (net_recv_raw_from(&chat, sizeof(chat), chat_from) == sizeof(chat)) {
-            std::string line =
-                std::string(chat.name) + ": " + std::string(chat.text);
-            push_chat_line(line);
-        }
 
 
         // Send local snapshot
