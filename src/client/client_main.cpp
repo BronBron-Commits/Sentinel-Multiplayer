@@ -646,7 +646,7 @@ static void draw_name_billboard(
 
 
     // world size (tweakable)
-    float scale = 0.008f;
+    float scale = 0.022f;
     float hw = tw * scale * 0.5f;
     float hh = th * scale * 0.5f;
     // View-aligned billboard axes (camera-facing, no roll)
