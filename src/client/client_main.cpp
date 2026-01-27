@@ -92,6 +92,12 @@ static void get_billboard_axes(
     uz = fx * ry - fy * rx;
 }
 
+// ------------------------------------------------------------
+// Performance stats (pause menu)
+// ------------------------------------------------------------
+static float g_fps = 0.0f;
+static float g_ping_ms = 0.0f;
+
 
 // ------------------------------------------------------------
 // Forward declarations (required by C++)
@@ -1130,6 +1136,9 @@ SDL_StartTextInput();
     while (running) {
         Uint32 now = SDL_GetTicks();
         float dt = (now - last_ticks) * 0.001f;
+        if (dt > 0.0001f)
+            g_fps = 1.0f / dt;
+
         last_ticks = now;
         update_npcs(dt);
 
@@ -1460,6 +1469,8 @@ SDL_StartTextInput();
                 Snapshot s{};
                 memcpy(&s, packet, sizeof(s));
                 replication.ingest(s);
+                double now_sec = now * 0.001;
+                g_ping_ms = float((now_sec - s.server_time) * 1000.0);
 
                 if (local_player_id == 0) {
                     local_player_id = s.player_id;
@@ -2092,6 +2103,61 @@ draw_low_clouds(cam, now * 0.001f);
                 CHAT_PANEL_WIDTH - CHAT_PANEL_PADDING * 2,
                 input_lines
             );
+
+            // ------------------------------------------------------------
+// FPS + Ping (top-left corner)
+// ------------------------------------------------------------
+            {
+                char stats[64];
+                snprintf(
+                    stats,
+                    sizeof(stats),
+                    "FPS: %.0f\nPing: %.0f ms",
+                    g_fps,
+                    g_ping_ms
+                );
+
+                std::vector<std::string> lines;
+                wrap_text(
+                    g_chat_font,
+                    stats,
+                    200,
+                    lines
+                );
+
+                float sx = 16.0f;
+                float sy = 16.0f;
+
+                for (const auto& line : lines) {
+                    int tw, th;
+                    GLuint tex = render_text_texture(
+                        g_chat_font,
+                        line,
+                        tw,
+                        th
+                    );
+
+                    if (!tex)
+                        continue;
+
+                    glEnable(GL_TEXTURE_2D);
+                    glBindTexture(GL_TEXTURE_2D, tex);
+                    glColor4f(1.0f, 1.0f, 1.0f, 0.9f);
+
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0, 0); glVertex2f(sx, sy);
+                    glTexCoord2f(1, 0); glVertex2f(sx + tw, sy);
+                    glTexCoord2f(1, 1); glVertex2f(sx + tw, sy + th);
+                    glTexCoord2f(0, 1); glVertex2f(sx, sy + th);
+                    glEnd();
+
+                    glDeleteTextures(1, &tex);
+                    glDisable(GL_TEXTURE_2D);
+
+                    sy += th + 4.0f;
+                }
+            }
+
 
             float input_y = g_fb_h * 0.5f;
             float x = g_fb_w * 0.5f - CHAT_PANEL_WIDTH * 0.5f;
