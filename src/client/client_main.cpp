@@ -873,7 +873,9 @@ int main() {
     uint32_t local_player_id = 0;
 
     float px = 0.0f, py = 1.5f, pz = 0.0f;
-    float yaw = 0.0f;
+    float drone_yaw = 0.0f;
+    float camera_yaw = 0.0f;
+
 
     Camera cam{};
 
@@ -1044,13 +1046,13 @@ int main() {
                 // FIRE missile
                 missile.active = true;
 
-                missile.x = px + std::cos(yaw) * 1.4f;
+                missile.x = px + std::cos(drone_yaw) * 1.4f;
                 missile.y = py + 0.15f;
-                missile.z = pz + std::sin(yaw) * 1.4f;
+                missile.z = pz + std::sin(drone_yaw) * 1.4f;
 
-                missile.vx = std::cos(yaw) * MISSILE_SPEED;
+                missile.vx = std::cos(drone_yaw) * MISSILE_SPEED;
                 missile.vy = 0.0f;
-                missile.vz = std::sin(yaw) * MISSILE_SPEED;
+                missile.vz = std::sin(drone_yaw) * MISSILE_SPEED;
             }
             else {
                 // DETONATE missile
@@ -1087,10 +1089,12 @@ int main() {
         if (keys && keys[SDL_SCANCODE_D])     turn -= 1;
 
 
-        yaw += turn * YAW_SPEED * dt;
+        drone_yaw += turn * YAW_SPEED * dt;
+        camera_yaw = drone_yaw;
 
-        float cy = std::cos(yaw);
-        float sy = std::sin(yaw);
+        float cy = std::cos(drone_yaw);
+        float sy = std::sin(drone_yaw);
+
 
         float speed_mul = boost_active ? 2.0f : 1.0f;
 
@@ -1179,18 +1183,23 @@ int main() {
             out.x           = px;
             out.y           = py;
             out.z           = pz;
-            out.yaw         = yaw;
+            out.yaw         = drone_yaw;
             out.server_time = now * 0.001;
 
             net_send_raw_to(&out, sizeof(out), server);
         }
 
         cam.target = { px, py, pz };
+
+        float cam_cy = std::cos(camera_yaw);
+        float cam_sy = std::sin(camera_yaw);
+
         cam.pos = {
-            px - cy * cam_distance,
+            px - cam_cy * cam_distance,
             py + CAM_UP,
-            pz - sy * cam_distance
+            pz - cam_sy * cam_distance
         };
+
 
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1286,6 +1295,14 @@ int main() {
         // ---------- VIEWPORT (REQUIRED EVERY FRAME) ----------
         glViewport(0, 0, g_fb_w, g_fb_h);
 
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+   
+
+        // ---------- VIEWPORT ----------
+        glViewport(0, 0, g_fb_w, g_fb_h);
+
         // ---------- PROJECTION ----------
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
@@ -1296,42 +1313,54 @@ int main() {
 
         gluPerspective(60.0f, aspect, 0.1f, 500.0f);
 
-        // ---------- MODELVIEW ----------
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
 
-
-
-        // ---- SKY (state-isolated) ----
-        glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT | GL_POLYGON_BIT);
+        // ============================================================
+// SKY (world-space, yaw-only)
+// ============================================================
+        glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT);
 
         glDisable(GL_LIGHTING);
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
-        glDisable(GL_CULL_FACE);
+
+        // --- PROJECTION already set (perspective) ---
 
         glMatrixMode(GL_MODELVIEW);
         glPushMatrix();
+
+        // Remove translation
         glLoadIdentity();
 
+        // Apply yaw ONLY
+        float yaw_deg = camera_yaw * 57.2958f;
+        glRotatef(yaw_deg, 0, 1, 0);
+
+        // Draw sky at origin (large radius implied)
         draw_sky(now * 0.001f);
 
         glPopMatrix();
 
+        glDepthMask(GL_TRUE);
         glPopAttrib();
 
+
+        // ---------- MODELVIEW ----------
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
+
         gluLookAt(
             cam.pos.x, cam.pos.y, cam.pos.z,
             cam.target.x, cam.target.y, cam.target.z,
             0, 1, 0
         );
 
-        draw_terrain();
-        glDisable(GL_LIGHTING);
-        draw_grid();
-   
+        // ------------------------------------------------------------
+// TERRAIN
+// ------------------------------------------------------------
+glEnable(GL_LIGHTING);
+glEnable(GL_COLOR_MATERIAL);
+draw_terrain();
+
         // ------------------------------------------------------------
 // NPC rendering (AI-driven)
 // ------------------------------------------------------------
@@ -1372,7 +1401,7 @@ int main() {
         if (missile.active) {
             glPushMatrix();
             glTranslatef(missile.x, missile.y, missile.z);
-            glRotatef(yaw * 57.2958f, 0, 1, 0);
+            glRotatef(drone_yaw * 57.2958f, 0, 1, 0);
             draw_missile();
             glPopMatrix();
         }
@@ -1406,7 +1435,7 @@ int main() {
         glPushMatrix();
         glTranslatef(px, py + idle.y_offset, pz);
 
-        glRotatef((yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
+        glRotatef((drone_yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
         glRotatef(idle.pitch, 1, 0, 0);
         glRotatef(idle.roll, 0, 0, 1);
 
