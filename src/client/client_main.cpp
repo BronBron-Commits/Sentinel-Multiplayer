@@ -43,6 +43,8 @@ struct Camera;
 static Mix_Music* g_music = nullptr;
 static Mix_Chunk* g_drone_move_sfx = nullptr;
 static int g_drone_move_channel = -1;
+static Mix_Chunk* g_drone_move_boost_sfx = nullptr;
+static bool g_drone_boost_active = false;
 
 static float frand(float a, float b);
 
@@ -91,8 +93,8 @@ static void draw_unit_cube();
 // ------------------------------------------------------------
 // Audio tuning
 // ------------------------------------------------------------
-constexpr int MUSIC_VOLUME = 10;  // very soft ambient
-constexpr int DRONE_BASE_VOLUME = 48;  // audible but not harsh
+constexpr int MUSIC_VOLUME = 5;  // very soft ambient
+constexpr int DRONE_BASE_VOLUME = 40;  // audible but not harsh
 
 constexpr float UFO_CRUISE_SPEED = 1.2f;   // slow glide
 constexpr float UFO_STEER_RATE = 0.4f;   // how fast direction changes
@@ -940,7 +942,15 @@ int main() {
         printf("[audio] Failed to load drone movement sound: %s\n", Mix_GetError());
     }
     else {
-        Mix_VolumeChunk(g_drone_move_sfx, MIX_MAX_VOLUME / 2);
+        Mix_VolumeChunk(g_drone_move_sfx, MIX_MAX_VOLUME / 4);
+    }
+
+    g_drone_move_boost_sfx = Mix_LoadWAV("assets/audio/drone_move_boost.wav");
+    if (!g_drone_move_boost_sfx) {
+        printf("[audio] Failed to load boosted drone sound: %s\n", Mix_GetError());
+    }
+    else {
+        Mix_VolumeChunk(g_drone_move_boost_sfx, MIX_MAX_VOLUME / 4);
     }
 
 
@@ -1257,16 +1267,29 @@ SDL_StartTextInput();
 
         if (g_drone_move_sfx) {
 
+            Mix_Chunk* desired =
+                boost_active && g_drone_move_boost_sfx
+                ? g_drone_move_boost_sfx
+                : g_drone_move_sfx;
+
             if (drone_moving) {
-                if (g_drone_move_channel == -1) {
+
+                if (g_drone_move_channel == -1 ||
+                    g_drone_boost_active != boost_active) {
+
+                    // Restart loop with correct pitch version
+                    if (g_drone_move_channel != -1)
+                        Mix_HaltChannel(g_drone_move_channel);
+
                     g_drone_move_channel = Mix_PlayChannel(
                         -1,
-                        g_drone_move_sfx,
-                        -1 // loop forever
+                        desired,
+                        -1
                     );
+
+                    g_drone_boost_active = boost_active;
                 }
 
-                // Optional: scale volume with speed
                 float speed =
                     std::fabs(forward) +
                     std::fabs(strafe) +
@@ -1275,8 +1298,8 @@ SDL_StartTextInput();
                 speed = std::fmin(speed, 1.0f);
 
                 int vol = int(
-                    (MIX_MAX_VOLUME / 4) +
-                    speed * (MIX_MAX_VOLUME / 2)
+                    DRONE_BASE_VOLUME +
+                    speed * (MIX_MAX_VOLUME / 3)
                     );
 
                 Mix_Volume(g_drone_move_channel, vol);
