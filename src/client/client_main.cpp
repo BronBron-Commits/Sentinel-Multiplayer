@@ -49,6 +49,12 @@ static Mix_Chunk* g_drone_move_boost_sfx = nullptr;
 static bool g_drone_boost_active = false;
 static bool pause_menu_open = false;
 
+
+// ------------------------------------------------------------
+// Ping measurement (RTT-based)
+// ------------------------------------------------------------
+static double g_last_snapshot_send_time = 0.0;
+
 // ------------------------------------------------------------
 // Forward declarations (text helpers)
 // ------------------------------------------------------------
@@ -1469,8 +1475,15 @@ SDL_StartTextInput();
                 Snapshot s{};
                 memcpy(&s, packet, sizeof(s));
                 replication.ingest(s);
+
+                // declare ONCE
                 double now_sec = now * 0.001;
-                g_ping_ms = float((now_sec - s.server_time) * 1000.0);
+
+                // RTT-based ping (client clock only)
+                double rtt = now_sec - g_last_snapshot_send_time;
+                if (rtt > 0.0 && rtt < 5.0) { // sanity clamp
+                    g_ping_ms = float(rtt * 1000.0);
+                }
 
                 if (local_player_id == 0) {
                     local_player_id = s.player_id;
@@ -1489,19 +1502,20 @@ SDL_StartTextInput();
 
 
 
-
-        // Send local snapshot
         if (local_player_id != 0) {
             Snapshot out{};
-            out.player_id   = local_player_id;
-            out.x           = px;
-            out.y           = py;
-            out.z           = pz;
-            out.yaw         = drone_yaw;
+            out.player_id = local_player_id;
+            out.x = px;
+            out.y = py;
+            out.z = pz;
+            out.yaw = drone_yaw;
             out.server_time = now * 0.001;
+
+            g_last_snapshot_send_time = now * 0.001;
 
             net_send_raw_to(&out, sizeof(out), server);
         }
+
 
         cam.target = { px, py, pz };
 
