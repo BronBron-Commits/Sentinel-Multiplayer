@@ -46,7 +46,7 @@ static constexpr float HEIGHT_GAIN = 8.0f;
 static constexpr float GRASS_NEAR_DIST = 22.0f;
 static constexpr float GRASS_FAR_DIST = 40.0f;
 static constexpr float GRASS_HEIGHT = 0.5f;
-static constexpr float GRASS_WIDTH = 0.045f;
+static constexpr float GRASS_WIDTH = 0.065f;
 
 // ============================================================
 // Math helpers
@@ -253,10 +253,12 @@ static void draw_grass(float cam_x, float cam_z, float time) {
                 continue;
 
            
+            float density = 0.9f + field * 1.2f; // 0.9 → 2.1
 
-            float density = 0.6f + field * 0.8f; // 0.6 → 1.4
+            int strands =
+                int(10 * density) +           // was 6
+                int(hash(x + 41, z + 97) * 6); // was 4
 
-            int strands = int(6 * density) + int(hash(x + 41, z + 97) * 4);
 
 
             for (int i = 0; i < strands; ++i) {
