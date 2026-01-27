@@ -1359,7 +1359,9 @@ int main() {
 // ------------------------------------------------------------
 glEnable(GL_LIGHTING);
 glEnable(GL_COLOR_MATERIAL);
-draw_terrain();
+draw_terrain(cam.pos.x, cam.pos.z);
+
+
 
         // ------------------------------------------------------------
 // NPC rendering (AI-driven)
