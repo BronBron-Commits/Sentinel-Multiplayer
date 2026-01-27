@@ -654,6 +654,74 @@ static GLuint render_text_texture(
     return tex;
 }
 
+static void draw_name_billboard(
+    const Camera& cam,
+    float x, float y, float z,
+    const std::string& name
+) {
+    int tw, th;
+    GLuint tex = render_text_texture(g_chat_font, name, tw, th);
+    if (!tex) return;
+
+    float rx, ry, rz;
+    float ux, uy, uz;
+    get_billboard_axes(cam, rx, ry, rz, ux, uy, uz);
+
+    // world size (tweakable)
+    float scale = 0.008f;
+    float hw = tw * scale * 0.5f;
+    float hh = th * scale * 0.5f;
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glDisable(GL_DEPTH_TEST);
+
+    glDepthMask(GL_FALSE);
+
+    glColor4f(1, 1, 1, 0.95f);
+
+    glBegin(GL_QUADS);
+    glTexCoord2f(0, 0);
+    glVertex3f(
+        x - rx * hw - ux * hh,
+        y - ry * hw - uy * hh,
+        z - rz * hw - uz * hh
+    );
+
+    glTexCoord2f(1, 0);
+    glVertex3f(
+        x + rx * hw - ux * hh,
+        y + ry * hw - uy * hh,
+        z + rz * hw - uz * hh
+    );
+
+    glTexCoord2f(1, 1);
+    glVertex3f(
+        x + rx * hw + ux * hh,
+        y + ry * hw + uy * hh,
+        z + rz * hw + uz * hh
+    );
+
+    glTexCoord2f(0, 1);
+    glVertex3f(
+        x - rx * hw + ux * hh,
+        y - ry * hw + uy * hh,
+        z - rz * hw + uz * hh
+    );
+    glEnd();
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+
+    glDeleteTextures(1, &tex);
+}
+
 
 static void draw_rounded_rect(
     float x, float y, float w, float h, float r
@@ -1744,6 +1812,15 @@ draw_low_clouds(cam, now * 0.001f);
 
             glPopMatrix();
 
+            // ---------- LOCAL PLAYER NAME TAG ----------
+            draw_name_billboard(
+                cam,
+                px,
+                py + 1.6f,
+                pz,
+                player_name
+            );
+
             glEnable(GL_COLOR_MATERIAL);
         }
 
@@ -1848,6 +1925,9 @@ draw_low_clouds(cam, now * 0.001f);
             float ry = lerp(a.y, b.y, alpha);
             float rz = lerp(a.z, b.z, alpha);
 
+
+
+
             float ryaw = lerp(a.yaw, b.yaw, alpha);
             bool idle = is_idle(a, b);
 
@@ -1947,6 +2027,7 @@ draw_low_clouds(cam, now * 0.001f);
             // ------------------------------------------------
 
             glPopMatrix();
+            
 
 
             glEnable(GL_COLOR_MATERIAL);
