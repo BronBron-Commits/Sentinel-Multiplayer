@@ -122,10 +122,9 @@ constexpr float CAM_ZOOM_SPEED = 1.2f;
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
 
-constexpr int CHAT_PANEL_WIDTH = 420;
-constexpr int CHAT_PANEL_PADDING = 12;
-constexpr int CHAT_INPUT_HEIGHT = 36;
-constexpr int CHAT_LINE_HEIGHT = 22;
+
+constexpr int CHAT_MAX_CHARS = 50;
+constexpr float CHAT_UI_SCALE = 0.75f; // 75% size (try 0.7–0.8)
 
 
 
@@ -156,11 +155,13 @@ static void measure_text(
 }
 
 
-constexpr int CHAT_PADDING_X = 10;
-constexpr int CHAT_PADDING_Y = 6;
-constexpr int CHAT_LINE_SPACING = 4;
-constexpr int CHAT_MAX_WIDTH = 520;
-constexpr int CHAT_MARGIN = 12;
+constexpr int CHAT_PANEL_WIDTH = int(420 * CHAT_UI_SCALE);
+constexpr int CHAT_PANEL_PADDING = int(12 * CHAT_UI_SCALE);
+constexpr int CHAT_INPUT_HEIGHT = int(36 * CHAT_UI_SCALE);
+constexpr int CHAT_LINE_HEIGHT = int(22 * CHAT_UI_SCALE);
+constexpr int CHAT_LINE_SPACING = int(4 * CHAT_UI_SCALE);
+constexpr int CHAT_MARGIN = int(12 * CHAT_UI_SCALE);
+
 
 // simple chat history (client-side only for now)
 static constexpr int MAX_CHAT_LINES = 24;
@@ -998,8 +999,26 @@ static void wrap_text(
 
             if (w > max_width && !line.empty()) {
                 out_lines.push_back(line);
-                line = word;
+
+                // HARD WRAP: split long word
+                std::string partial;
+                for (char wc : word) {
+                    partial.push_back(wc);
+
+                    int pw, ph;
+                    TTF_SizeUTF8(font, partial.c_str(), &pw, &ph);
+
+                    if (pw > max_width) {
+                        partial.pop_back();
+                        out_lines.push_back(partial);
+                        partial.clear();
+                        partial.push_back(wc);
+                    }
+                }
+
+                line = partial;
             }
+
             else {
                 line = test;
             }
@@ -1036,12 +1055,12 @@ int main() {
 
     g_chat_font = TTF_OpenFont(
         "assets/fonts/DejaVuSans-Bold.ttf",
-        18
+        int(18 * CHAT_UI_SCALE)
     );
 
     g_title_font = TTF_OpenFont(
         "assets/fonts/DejaVuSans-Bold.ttf",
-        36   // ← BIG text for name entry
+        int(36 * CHAT_UI_SCALE)
     );
 
     if (!g_chat_font || !g_title_font) {
@@ -1311,9 +1330,16 @@ SDL_StartTextInput();
 
 
             if (chat_active && e.type == SDL_TEXTINPUT) {
-                chat_buffer += e.text.text;
+
+                // Hard cap to network-safe size
+                if ((int)chat_buffer.size() < CHAT_MAX_CHARS) {
+                    chat_buffer += e.text.text;
+                }
+
+
                 continue;
             }
+
 
 
             // ----- WINDOW RESIZE / FULLSCREEN -----
@@ -2075,41 +2101,71 @@ draw_low_clouds(cam, now * 0.001f);
         glEnd();
 
         float x = panel_x + CHAT_PANEL_PADDING;
-        float y = panel_y - CHAT_INPUT_HEIGHT + 6.0f;
 
-        if (!chat_buffer.empty()) {
+        // Wrap live input
+        std::vector<std::string> input_lines;
+        wrap_text(
+            g_chat_font,
+            chat_buffer,
+            CHAT_PANEL_WIDTH - CHAT_PANEL_PADDING * 2,
+            input_lines
+        );
+
+        // Inner padding inside input box
+        constexpr float CHAT_INPUT_PADDING = 6.0f * CHAT_UI_SCALE;
+
+        // Usable height inside the input area
+        float usable_height =
+            CHAT_INPUT_HEIGHT - CHAT_INPUT_PADDING * 2;
+
+        // How many lines fit cleanly
+        int max_lines = (int)(usable_height / CHAT_LINE_HEIGHT);
+
+        // Show last N lines
+        int start =
+            (int)input_lines.size() > max_lines
+            ? (int)input_lines.size() - max_lines
+            : 0;
+
+        // Bottom-aligned baseline (inside padding)
+        float y =
+            panel_y
+            - CHAT_PANEL_PADDING
+            - CHAT_INPUT_PADDING
+            - CHAT_LINE_HEIGHT * (int)(input_lines.size() - start);
+
+        // ---------- DRAW CHAT INPUT PREVIEW ----------
+        for (int i = start; i < (int)input_lines.size(); ++i) {
+            const std::string& line = input_lines[i];
+
             int tw, th;
             GLuint tex = render_text_texture(
                 g_chat_font,
-                chat_buffer,
+                line,
                 tw,
                 th
             );
 
+            if (!tex)
+                continue;
 
-            if (tex) {
-                glEnable(GL_TEXTURE_2D);
-                glBindTexture(GL_TEXTURE_2D, tex);
-                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glColor4f(1, 1, 1, 1);
 
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glBegin(GL_QUADS);
+            glTexCoord2f(0, 0); glVertex2f(x, y);
+            glTexCoord2f(1, 0); glVertex2f(x + tw, y);
+            glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
+            glTexCoord2f(0, 1); glVertex2f(x, y + th);
+            glEnd();
 
-                glColor4f(1, 1, 1, 1);
+            glDeleteTextures(1, &tex);
+            glDisable(GL_TEXTURE_2D);
 
-
-
-                glBegin(GL_QUADS);
-                glTexCoord2f(0, 0); glVertex2f(x, y);
-                glTexCoord2f(1, 0); glVertex2f(x + tw, y);
-                glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
-                glTexCoord2f(0, 1); glVertex2f(x, y + th);
-                glEnd();
-
-                glDeleteTextures(1, &tex);
-                glDisable(GL_TEXTURE_2D);
-            }
+            y += CHAT_LINE_HEIGHT;
         }
+
 
 
         for (size_t i = 0; i < chat_lines.size(); ++i) {
