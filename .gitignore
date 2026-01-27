@@ -2,3 +2,4 @@ build/
 external/
 build-win/
 SDL2.dll
+vcpkg_installed/

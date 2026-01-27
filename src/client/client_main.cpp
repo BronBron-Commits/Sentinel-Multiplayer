@@ -10,6 +10,9 @@
 #include <glad/glad.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
+#include <SDL_mixer.h>
+
+
 
 #include <GL/glu.h>
 #include <string>
@@ -32,6 +35,56 @@
 #include "sentinel/net/replication/replication_client.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
 #include "sentinel/net/protocol/chat.hpp"
+
+// ------------------------------------------------------------
+// Forward declarations (required by C++)
+// ------------------------------------------------------------
+struct Camera;
+static Mix_Music* g_music = nullptr;
+
+static float frand(float a, float b);
+
+static void get_billboard_axes(
+    const Camera& cam,
+    float& rx, float& ry, float& rz,
+    float& ux, float& uy, float& uz
+) {
+    float fx = cam.target.x - cam.pos.x;
+    float fy = cam.target.y - cam.pos.y;
+    float fz = cam.target.z - cam.pos.z;
+
+    float len = std::sqrt(fx * fx + fy * fy + fz * fz);
+    if (len < 0.0001f) len = 1.0f;
+    fx /= len; fy /= len; fz /= len;
+
+    // world up
+    float wx = 0.0f, wy = 1.0f, wz = 0.0f;
+
+    // right = up × forward
+    rx = wy * fz - wz * fy;
+    ry = wz * fx - wx * fz;
+    rz = wx * fy - wy * fx;
+
+    float rl = std::sqrt(rx * rx + ry * ry + rz * rz);
+    if (rl < 0.0001f) rl = 1.0f;
+    rx /= rl; ry /= rl; rz /= rl;
+
+    // up = forward × right
+    ux = fy * rz - fz * ry;
+    uy = fz * rx - fx * rz;
+    uz = fx * ry - fy * rx;
+}
+
+
+// ------------------------------------------------------------
+// Forward declarations (required by C++)
+// ------------------------------------------------------------
+struct Camera;
+
+static float frand(float a, float b);
+
+// ADD THIS LINE
+static void draw_unit_cube();
 
 
 constexpr float UFO_CRUISE_SPEED = 1.2f;   // slow glide
@@ -592,9 +645,10 @@ static void spawn_ufo_particle() {
             ufo_particles[i].z = g_ufo.z + std::sin(a) * r;
             ufo_particles[i].y = g_ufo.y - 0.1f;
 
-            ufo_particles[i].vx = 0.0f;
-            ufo_particles[i].vy = -0.6f - (float(rand()) / RAND_MAX) * 0.4f;
-            ufo_particles[i].vz = 0.0f;
+            ufo_particles[i].vx = frand(-0.4f, 0.4f);
+            ufo_particles[i].vz = frand(-0.4f, 0.4f);
+            ufo_particles[i].vy = -0.8f - frand(0.0f, 0.6f);
+
 
             ufo_particles[i].life = 1.0f;
             break;
@@ -604,7 +658,7 @@ static void spawn_ufo_particle() {
 
 static void update_ufo_particles(float dt) {
     // spawn rate
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 4; ++i)
         spawn_ufo_particle();
 
     for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
@@ -621,37 +675,43 @@ static void update_ufo_particles(float dt) {
     }
 }
 
-static void draw_ufo_particles() {
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glDepthMask(GL_FALSE);
+static void draw_ufo_particles(const Camera& cam)
+{
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
 
-    glBegin(GL_QUADS);
     for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
         if (ufo_particles[i].life <= 0.0f)
             continue;
 
-        float a = ufo_particles[i].life * 0.85f;
-        float s = 0.35f;
+        float life = ufo_particles[i].life;
 
-        glColor4f(0.2f, 0.8f, 1.0f, a);
+        // size + fade
+        float size = 0.12f + (1.0f - life) * 0.25f;
 
-        float x = ufo_particles[i].x;
-        float y = ufo_particles[i].y;
-        float z = ufo_particles[i].z;
+        glPushMatrix();
+        glTranslatef(
+            ufo_particles[i].x,
+            ufo_particles[i].y,
+            ufo_particles[i].z
+        );
 
-        glVertex3f(x - s, y, z - s);
-        glVertex3f(x + s, y, z - s);
-        glVertex3f(x + s, y, z + s);
-        glVertex3f(x - s, y, z + s);
+        // optional tumble for energy
+        glRotatef(life * 360.0f, 1.0f, 1.0f, 0.0f);
+
+        glScalef(size, size, size);
+
+        // emissive sci-fi color
+        glColor3f(0.25f, 0.85f, 1.0f);
+
+        draw_unit_cube();
+
+        glPopMatrix();
     }
-    glEnd();
-
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
 }
+
+
 static float frand(float a, float b) {
     return a + (b - a) * (float(rand()) / RAND_MAX);
 }
@@ -771,6 +831,55 @@ static void update_npcs(float dt) {
 
     }
 }
+static void draw_unit_cube()
+{
+    glBegin(GL_QUADS);
+
+    // +X
+    glNormal3f(1, 0, 0);
+    glVertex3f(0.5f, -0.5f, -0.5f);
+    glVertex3f(0.5f, 0.5f, -0.5f);
+    glVertex3f(0.5f, 0.5f, 0.5f);
+    glVertex3f(0.5f, -0.5f, 0.5f);
+
+    // -X
+    glNormal3f(-1, 0, 0);
+    glVertex3f(-0.5f, -0.5f, 0.5f);
+    glVertex3f(-0.5f, 0.5f, 0.5f);
+    glVertex3f(-0.5f, 0.5f, -0.5f);
+    glVertex3f(-0.5f, -0.5f, -0.5f);
+
+    // +Y
+    glNormal3f(0, 1, 0);
+    glVertex3f(-0.5f, 0.5f, -0.5f);
+    glVertex3f(-0.5f, 0.5f, 0.5f);
+    glVertex3f(0.5f, 0.5f, 0.5f);
+    glVertex3f(0.5f, 0.5f, -0.5f);
+
+    // -Y
+    glNormal3f(0, -1, 0);
+    glVertex3f(-0.5f, -0.5f, 0.5f);
+    glVertex3f(-0.5f, -0.5f, -0.5f);
+    glVertex3f(0.5f, -0.5f, -0.5f);
+    glVertex3f(0.5f, -0.5f, 0.5f);
+
+    // +Z
+    glNormal3f(0, 0, 1);
+    glVertex3f(-0.5f, -0.5f, 0.5f);
+    glVertex3f(0.5f, -0.5f, 0.5f);
+    glVertex3f(0.5f, 0.5f, 0.5f);
+    glVertex3f(-0.5f, 0.5f, 0.5f);
+
+    // -Z
+    glNormal3f(0, 0, -1);
+    glVertex3f(0.5f, -0.5f, -0.5f);
+    glVertex3f(-0.5f, -0.5f, -0.5f);
+    glVertex3f(-0.5f, 0.5f, -0.5f);
+    glVertex3f(0.5f, 0.5f, -0.5f);
+
+    glEnd();
+}
+
 
 
 // ------------------------------------------------------------
@@ -778,6 +887,13 @@ int main() {
     setbuf(stdout, nullptr);
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+    if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        printf("[audio] Mix_OpenAudio failed: %s\n", Mix_GetError());
+        return 1;
+    }
+
+    Mix_AllocateChannels(16);
+
     if (TTF_Init() != 0) {
         printf("[chat] TTF_Init failed: %s\n", TTF_GetError());
         return 1;
@@ -796,6 +912,18 @@ int main() {
     if (!g_chat_font || !g_title_font) {
         printf("[chat] Failed to load font: %s\n", TTF_GetError());
         return 1;
+    }
+
+    // ------------------------------------------------------------
+    // Load and start background music (client-side only)
+    // ------------------------------------------------------------
+    g_music = Mix_LoadMUS("assets/audio/main_loop.ogg");
+    if (!g_music) {
+        printf("[audio] Failed to load music: %s\n", Mix_GetError());
+    }
+    else {
+        Mix_VolumeMusic(MIX_MAX_VOLUME / 3); // subtle ambient level
+        Mix_PlayMusic(g_music, -1);          // infinite seamless loop
     }
 
 
@@ -1438,7 +1566,7 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
 
         glEnable(GL_LIGHTING);
-        draw_ufo_particles();
+        draw_ufo_particles(cam);
 
         draw_trail();
         if (missile.active) {
@@ -1749,9 +1877,24 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
         SDL_GL_SwapWindow(win);
     }
+    // ------------------------------------------------------------
+    // Shutdown audio
+    // ------------------------------------------------------------
+    if (g_music) {
+        Mix_HaltMusic();
+        Mix_FreeMusic(g_music);
+        g_music = nullptr;
+    }
+
+    Mix_CloseAudio();
+
+    // ------------------------------------------------------------
+    // Shutdown other systems
+    // ------------------------------------------------------------
     TTF_CloseFont(g_chat_font);
     TTF_Quit();
 
     net_shutdown();
     return 0;
+
 }

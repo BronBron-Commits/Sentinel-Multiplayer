@@ -6,7 +6,6 @@ cmake_minimum_required(VERSION 3.20)
 # ============================================================
 set(VCPKG_FEATURE_FLAGS "manifests")
 
-# IMPORTANT: GLAD IS C CODE
 project(sentinel_multiplayer LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -30,6 +29,7 @@ if (WIN32)
     target_sources(sentinel_net PRIVATE
         src/net/transport/udp_win.cpp
     )
+
     target_link_libraries(sentinel_net PUBLIC ws2_32)
 else()
     target_sources(sentinel_net PRIVATE
@@ -50,11 +50,23 @@ target_include_directories(glad PUBLIC
 )
 
 # ============================================================
-# SDL2 + SDL2_ttf (vcpkg / manifest mode)
+# SDL2 + SDL2_ttf (vcpkg)
 # ============================================================
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(SDL2_ttf CONFIG REQUIRED)
+
+# ============================================================
+# SDL2_mixer (MANUAL — NO CMAKE PACKAGE PROVIDED)
+# ============================================================
+
+if (WIN32)
+    find_library(SDL2_MIXER_LIB
+        NAMES SDL2_mixer
+        PATHS "${VCPKG_INSTALLED_DIR}/x64-windows/lib"
+        REQUIRED
+    )
+endif()
 
 # ============================================================
 # CLIENT
@@ -78,13 +90,15 @@ if (WIN32)
         sentinel_net
         glad
         SDL2::SDL2
+        SDL2::SDL2main
         SDL2_ttf::SDL2_ttf
+        ${SDL2_MIXER_LIB}
         opengl32
         glu32
     )
 
     # --------------------------------------------------------
-    # Copy SDL2.dll + SDL2_ttf.dll next to client.exe
+    # Copy SDL DLLs next to client.exe
     # --------------------------------------------------------
     add_custom_command(TARGET client POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -95,6 +109,15 @@ if (WIN32)
     add_custom_command(TARGET client POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:SDL2_ttf::SDL2_ttf>
+            $<TARGET_FILE_DIR:client>
+    )
+
+    # --------------------------------------------------------
+    # Copy SDL2_mixer.dll explicitly
+    # --------------------------------------------------------
+    add_custom_command(TARGET client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_INSTALLED_DIR}/x64-windows/bin/SDL2_mixer.dll"
             $<TARGET_FILE_DIR:client>
     )
 
