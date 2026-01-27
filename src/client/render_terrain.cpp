@@ -18,6 +18,7 @@ static float grass_field(float x, float z) {
     // Large-scale density map (patches)
     return noise(x * 0.015f, z * 0.015f);
 }
+static float height_at(float x, float z);
 
 static constexpr float WIND_STRENGTH = 0.18f;
 static constexpr float WIND_FREQ = 0.9f;
@@ -43,10 +44,13 @@ static constexpr float GRID_SCALE = 2.0f;
 static constexpr float HEIGHT_GAIN = 8.0f;
 
 // Grass tuning (PERFORMANCE CRITICAL)
-static constexpr float GRASS_NEAR_DIST = 22.0f;
-static constexpr float GRASS_FAR_DIST = 40.0f;
+static constexpr float GRASS_NEAR_DIST = 32.0f;
+static constexpr float GRASS_FAR_DIST = 65.0f;
 static constexpr float GRASS_HEIGHT = 0.5f;
 static constexpr float GRASS_WIDTH = 0.065f;
+static constexpr float GRASS_LOD0_END = 30.0f;  // full
+static constexpr float GRASS_LOD1_END = 55.0f;  // reduced
+static constexpr float GRASS_LOD2_END = 75.0f;  // billboard
 
 // ============================================================
 // Math helpers
@@ -61,6 +65,15 @@ static inline float hash(int x, int z) {
     h = (h ^ (h >> 13)) * 1274126177;
     return float(h & 0x7fffffff) / float(0x7fffffff);
 }
+
+static inline int stable_cell(float v) {
+    return int(std::floor((v + 0.0001f) / GRID_SCALE));
+}
+
+
+// ============================================================
+// Noise + FBM
+// ============================================================
 
 static float noise(float x, float z) {
     int ix = int(std::floor(x));
@@ -96,6 +109,7 @@ static float fbm(float x, float z) {
 static float height_at(float x, float z) {
     return fbm(x, z) * HEIGHT_GAIN;
 }
+
 
 // ============================================================
 // Stable vertex jitter (CRACK-FREE)
@@ -233,85 +247,66 @@ static void draw_grass(float cam_x, float cam_z, float time) {
     glEnable(GL_ALPHA_TEST);
     glAlphaFunc(GL_GREATER, 0.2f);
 
-    glColor3f(0.35f, 0.70f, 0.35f);
-
     int base_x = int(std::floor(cam_x / GRID_SCALE));
     int base_z = int(std::floor(cam_z / GRID_SCALE));
+    int grass_radius = int(GRASS_FAR_DIST / GRID_SCALE) + 2;
 
-    for (int z = base_z - GRID_SIZE; z < base_z + GRID_SIZE; ++z) {
-        for (int x = base_x - GRID_SIZE; x < base_x + GRID_SIZE; ++x) {
-
-
-            float field = grass_field(x * GRID_SCALE, z * GRID_SCALE);
-
-
+    for (int z = base_z - grass_radius; z <= base_z + grass_radius; ++z) {
+        for (int x = base_x - grass_radius; x <= base_x + grass_radius; ++x) {
 
             float jx, jz;
             vertex_jitter(x, z, jx, jz);
 
-            float wx = (float(x) + 0.5f + jx) * GRID_SCALE;
-            float wz = (float(z) + 0.5f + jz) * GRID_SCALE;
-
+            float wx = (x + 0.5f + jx) * GRID_SCALE;
+            float wz = (z + 0.5f + jz) * GRID_SCALE;
 
             float dx = wx - cam_x;
             float dz = wz - cam_z;
             float dist = std::sqrt(dx * dx + dz * dz);
-
             if (dist > GRASS_FAR_DIST)
                 continue;
 
+            float dist_t = std::clamp(
+                (dist - GRASS_NEAR_DIST) / (GRASS_FAR_DIST - GRASS_NEAR_DIST),
+                0.0f, 1.0f
+            );
 
-            if (dist > GRASS_FAR_DIST)
-                continue;
-
-            float dist_t = (dist - GRASS_NEAR_DIST) /
-                (GRASS_FAR_DIST - GRASS_NEAR_DIST);
-
-            dist_t = std::clamp(dist_t, 0.0f, 1.0f);
-
-            // Gradual thinning instead of binary cutoff
             if (hash(x + 19, z + 73) > (1.0f - dist_t))
                 continue;
-
 
             float wy = height_at(wx, wz);
             float nx, ny, nz;
             terrain_normal(wx, wz, nx, ny, nz);
 
-            // Micro-normal detail (fake normal map)
-            float detail = noise(wx * 1.5f, wz * 1.5f) - 0.5f;
-            nx += detail * 0.25f;
-            nz += detail * 0.25f;
-
-            // Renormalize
-            float len = std::sqrt(nx * nx + ny * ny + nz * nz);
-            if (len > 0.0001f) {
-                nx /= len;
-                ny /= len;
-                nz /= len;
-            }
-
-
-            float slope_real = terrain_slope(ny);
-            float dist_path = path_distance(wx, wz);
-
-            TerrainZone zone = classify_zone(wy, slope_real, dist_path);
-
-            // Only allow grass on grass terrain
+            TerrainZone zone =
+                classify_zone(wy, terrain_slope(ny), path_distance(wx, wz));
             if (zone != TerrainZone::Grass)
                 continue;
 
-           
-            float density = 0.9f + field * 1.2f; // 0.9 → 2.1
+            float field = grass_field(wx, wz);
+            float density = 0.9f + field * 1.2f;
 
-            int strands =
-                int(10 * density) +           // was 6
-                int(hash(x + 41, z + 97) * 6); // was 4
+            /* ---------- BILLBOARD LOD ---------- */
+            if (dist > GRASS_LOD1_END) {
+                float h = GRASS_HEIGHT * 1.3f;
+                glColor3f(0.30f, 0.65f, 0.30f);
 
+                glBegin(GL_QUADS);
+                glVertex3f(wx - 0.35f, wy, wz);
+                glVertex3f(wx + 0.35f, wy, wz);
+                glVertex3f(wx + 0.35f, wy + h, wz);
+                glVertex3f(wx - 0.35f, wy + h, wz);
+                glEnd();
 
+                continue;
+            }
+
+            /* ---------- STRANDS ---------- */
+            int strands = (dist < GRASS_LOD0_END)
+                ? int(10 * density) + int(hash(x + 41, z + 97) * 6)
+                : int(5 * density) + int(hash(x + 41, z + 97) * 3);
 
             for (int i = 0; i < strands; ++i) {
-
                 float ox = (hash(x + i * 13, z + i * 29) - 0.5f) * 0.6f;
                 float oz = (hash(x + i * 31, z + i * 17) - 0.5f) * 0.6f;
 
@@ -327,66 +322,36 @@ static void draw_grass(float cam_x, float cam_z, float time) {
                         noise(px * WIND_SCALE, pz * WIND_SCALE) * 3.0f)
                     * WIND_STRENGTH;
 
-                float h = GRASS_HEIGHT * (0.6f + hash(x + i * 7, z + i * 11));
+                float h = GRASS_HEIGHT *
+                    (0.6f + hash(x + i * 7, z + i * 11));
 
                 float tint = 0.85f + hash(x + i * 5, z + i * 9) * 0.3f;
-                float ground_tint = (noise(px * 0.25f, pz * 0.25f) - 0.5f) * 0.10f;
 
-                glColor3f(
-                    (0.32f + ground_tint) * tint,
-                    (0.68f + ground_tint) * tint,
-                    (0.32f) * tint
-                );
+                glColor3f(0.32f * tint, 0.68f * tint, 0.32f * tint);
 
+                float bend = wind * 1.4f;
 
                 glBegin(GL_QUADS);
 
-                // Quad 1
-                float bend = wind;
-                float bend_tip = bend * 1.4f;
-
                 glVertex3f(px - GRASS_WIDTH, wy, pz);
                 glVertex3f(px + GRASS_WIDTH, wy, pz);
+                glVertex3f(px + GRASS_WIDTH + bend, wy + h, pz);
+                glVertex3f(px - GRASS_WIDTH + bend, wy + h, pz);
 
-                glVertex3f(
-                    px + GRASS_WIDTH + bend_tip,
-                    wy + h,
-                    pz
-                );
-
-                glVertex3f(
-                    px - GRASS_WIDTH + bend_tip,
-                    wy + h,
-                    pz
-                );
-
-
-                // Quad 2 (cross)
                 glVertex3f(px, wy, pz - GRASS_WIDTH);
                 glVertex3f(px, wy, pz + GRASS_WIDTH);
-
-                glVertex3f(
-                    px + bend_tip,
-                    wy + h,
-                    pz + GRASS_WIDTH
-                );
-
-                glVertex3f(
-                    px + bend_tip,
-                    wy + h,
-                    pz - GRASS_WIDTH
-                );
-
+                glVertex3f(px + bend, wy + h, pz + GRASS_WIDTH);
+                glVertex3f(px + bend, wy + h, pz - GRASS_WIDTH);
 
                 glEnd();
             }
-
         }
     }
 
     glDisable(GL_ALPHA_TEST);
     glEnable(GL_LIGHTING);
 }
+
 
 // ============================================================
 // Render
@@ -429,138 +394,209 @@ static void draw_tree(float x, float z, float time) {
     glEnd();
 
     // ------------------------------
-    // Canopy (cheap layered leaves)
+    // Canopy (volumetric leaf clusters)
     // ------------------------------
     glDisable(GL_LIGHTING);
+    glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
+
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    const int layers = 4;
-    const float base_r = 2.2f;
+    const int CLUSTERS = 14;
+    const float CANOPY_R = 2.4f;
+    const float CANOPY_H = trunk_h + 1.2f;
 
-    for (int i = 0; i < layers; ++i) {
+    for (int i = 0; i < CLUSTERS; ++i) {
 
-        float h = y + trunk_h + i * 0.9f;
-        float r = base_r * (1.0f - i * 0.18f);
+        // Stable random per-cluster
+        float ha = hash((int)(x * 13) + i * 17, (int)(z * 19) + i * 29);
+        float hb = hash((int)(x * 31) + i * 23, (int)(z * 11) + i * 41);
+
+        float theta = ha * 6.28318f;
+        float radius = CANOPY_R * (0.35f + hb * 0.65f);
+        float height = CANOPY_H + hb * 2.2f;
 
         float sway =
-            std::sin(time * 0.6f + x * 0.1f + z * 0.1f) * 0.08f * (i + 1);
+            std::sin(time * 0.7f + theta + x * 0.1f + z * 0.1f)
+            * 0.15f * (0.5f + hb);
 
-        float tint = 0.85f + 0.05f * i;
+        float cx = x + std::cos(theta) * radius + sway;
+        float cy = y + height;
+        float cz = z + std::sin(theta) * radius;
+
+        float size = 0.9f + hb * 0.8f;
+
+        float tint = 0.85f + hb * 0.15f;
 
         glColor4f(
-            0.22f * tint,
+            0.20f * tint,
             0.55f * tint,
-            0.24f * tint,
-            0.85f
+            0.22f * tint,
+            0.75f
         );
 
-        glBegin(GL_TRIANGLE_FAN);
-        glVertex3f(x + sway, h, z);
+        glBegin(GL_QUADS);
 
-        for (int j = 0; j <= 12; ++j) {
-            float a = (float)j / 12.0f * 6.28318f;
-            glVertex3f(
-                x + std::cos(a) * r + sway,
-                h,
-                z + std::sin(a) * r
-            );
-        }
+        // Quad X
+        glVertex3f(cx - size, cy - size * 0.5f, cz);
+        glVertex3f(cx + size, cy - size * 0.5f, cz);
+        glVertex3f(cx + size, cy + size * 0.5f, cz);
+        glVertex3f(cx - size, cy + size * 0.5f, cz);
+
+        // Quad Z (cross)
+        glVertex3f(cx, cy - size * 0.5f, cz - size);
+        glVertex3f(cx, cy - size * 0.5f, cz + size);
+        glVertex3f(cx, cy + size * 0.5f, cz + size);
+        glVertex3f(cx, cy + size * 0.5f, cz - size);
+
         glEnd();
     }
 
     glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+
     glEnable(GL_LIGHTING);
+
+}
+
+static void draw_trees_near(float anchor_x, float anchor_z, float time) {
+
+    constexpr int   TREE_RADIUS = 22;     // tiles
+    constexpr float TREE_FADE_START = 75.0f;
+    constexpr float TREE_FADE_END = 95.0f;
+
+    int cx = stable_cell(anchor_x);
+    int cz = stable_cell(anchor_z);
+
+    for (int z = cz - TREE_RADIUS; z <= cz + TREE_RADIUS; ++z) {
+        for (int x = cx - TREE_RADIUS; x <= cx + TREE_RADIUS; ++x) {
+
+            // Stable world position
+            float wx = x * GRID_SCALE + hash(x, z) * 1.5f;
+            float wz = z * GRID_SCALE + hash(z, x) * 1.5f;
+
+            float dx = wx - anchor_x;
+            float dz = wz - anchor_z;
+            float dist = std::sqrt(dx * dx + dz * dz);
+
+            // Hard distance cull
+            if (dist > TREE_FADE_END)
+                continue;
+
+            // Density (world-stable)
+            if (hash(x * 7, z * 13) < 0.975f)
+                continue;
+
+            if (hash(x * 19, z * 29) < 0.4f)
+                continue;
+
+            // Keep away from path
+            if (path_distance(wx, wz) < 4.5f)
+                continue;
+
+            // Smooth fade (no pop)
+            float fade = 1.0f;
+            if (dist > TREE_FADE_START) {
+                fade = 1.0f - (dist - TREE_FADE_START) /
+                    (TREE_FADE_END - TREE_FADE_START);
+            }
+
+            glColor4f(1.0f, 1.0f, 1.0f, fade);
+            draw_tree(wx, wz, time);
+        }
+    }
 }
 
 
-void draw_terrain(float cam_x, float cam_z) {
 
-    // -------- Lighting --------
-    glEnable(GL_LIGHTING);
 
-    GLfloat global_ambient[] = { 0.14f, 0.14f, 0.14f, 1.0f };
-    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
+    void draw_terrain(float cam_x, float cam_z) {
 
-    GLfloat sun_dir[] = { 0.4f, 1.0f, 0.3f, 0.0f };
-    GLfloat sun_color[] = { 0.60f, 0.58f, 0.55f, 1.0f };
-    glEnable(GL_LIGHT0);
-    glLightfv(GL_LIGHT0, GL_POSITION, sun_dir);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_color);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, sun_color);
+        // -------- Lighting --------
+        glEnable(GL_LIGHTING);
 
-    GLfloat fill_dir[] = { -0.5f, 0.8f, -0.3f, 0.0f };
-    GLfloat fill_color[] = { 0.12f, 0.12f, 0.14f, 1.0f };
-    glEnable(GL_LIGHT1);
-    glLightfv(GL_LIGHT1, GL_POSITION, fill_dir);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, fill_color);
-    glLightfv(GL_LIGHT1, GL_SPECULAR, fill_color);
+        GLfloat global_ambient[] = { 0.14f, 0.14f, 0.14f, 1.0f };
+        glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
 
-    // -------- Fog --------
-    glEnable(GL_FOG);
-    GLfloat fogColor[] = { 0.72f, 0.82f, 0.92f, 1.0f };
-    glFogfv(GL_FOG_COLOR, fogColor);
-    glFogf(GL_FOG_MODE, GL_LINEAR);
-    glFogf(GL_FOG_START, 50.0f);
-    glFogf(GL_FOG_END, 110.0f);
+        GLfloat sun_dir[] = { 0.4f, 1.0f, 0.3f, 0.0f };
+        GLfloat sun_color[] = { 0.60f, 0.58f, 0.55f, 1.0f };
+        glEnable(GL_LIGHT0);
+        glLightfv(GL_LIGHT0, GL_POSITION, sun_dir);
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_color);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, sun_color);
 
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        GLfloat fill_dir[] = { -0.5f, 0.8f, -0.3f, 0.0f };
+        GLfloat fill_color[] = { 0.12f, 0.12f, 0.14f, 1.0f };
+        glEnable(GL_LIGHT1);
+        glLightfv(GL_LIGHT1, GL_POSITION, fill_dir);
+        glLightfv(GL_LIGHT1, GL_DIFFUSE, fill_color);
+        glLightfv(GL_LIGHT1, GL_SPECULAR, fill_color);
 
-    // -------- TERRAIN --------
-    int base_x = int(std::floor(cam_x / GRID_SCALE));
-    int base_z = int(std::floor(cam_z / GRID_SCALE));
+        // -------- Fog --------
+        glEnable(GL_FOG);
+        GLfloat fogColor[] = { 0.72f, 0.82f, 0.92f, 1.0f };
+        glFogfv(GL_FOG_COLOR, fogColor);
+        glFogf(GL_FOG_MODE, GL_LINEAR);
+        glFogf(GL_FOG_START, 50.0f);
+        glFogf(GL_FOG_END, 110.0f);
 
-    for (int z = base_z - GRID_SIZE; z < base_z + GRID_SIZE; ++z) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-        glBegin(GL_TRIANGLE_STRIP);
+        // -------- TERRAIN --------
+        int base_x = int(std::floor(cam_x / GRID_SCALE));
+        int base_z = int(std::floor(cam_z / GRID_SCALE));
 
-        for (int x = base_x - GRID_SIZE; x <= base_x + GRID_SIZE; ++x) {
-            for (int dz = 0; dz <= 1; ++dz) {
+        for (int z = base_z - GRID_SIZE; z < base_z + GRID_SIZE; ++z) {
 
-                float jx, jz;
-                vertex_jitter(x, z + dz, jx, jz);
+            glBegin(GL_TRIANGLE_STRIP);
 
-                float wx = (x + jx) * GRID_SCALE;
-                float wz = (z + dz + jz) * GRID_SCALE;
-                float wy = height_at(wx, wz);
+            for (int x = base_x - GRID_SIZE; x <= base_x + GRID_SIZE; ++x) {
+                for (int dz = 0; dz <= 1; ++dz) {
 
-                float dist = path_distance(wx, wz);
-                if (dist < 2.5f)
-                    wy -= (2.5f - dist) * 0.6f;
+                    float jx, jz;
+                    vertex_jitter(x, z + dz, jx, jz);
 
-                float nx, ny, nz;
-                terrain_normal(wx, wz, nx, ny, nz);
+                    float wx = (x + jx) * GRID_SCALE;
+                    float wz = (z + dz + jz) * GRID_SCALE;
+                    float wy = height_at(wx, wz);
 
-                float slope = terrain_slope(ny);
-                TerrainZone zone = classify_zone(wy, slope, dist);
+                    float dist = path_distance(wx, wz);
+                    if (dist < 2.5f)
+                        wy -= (2.5f - dist) * 0.6f;
 
-                set_zone_color(zone, wy, slope, wx, wz);
+                    float nx, ny, nz;
+                    terrain_normal(wx, wz, nx, ny, nz);
 
-                glNormal3f(nx, ny, nz);
-                glVertex3f(wx, wy, wz);
+                    float slope = terrain_slope(ny);
+                    TerrainZone zone = classify_zone(wy, slope, dist);
+
+                    set_zone_color(zone, wy, slope, wx, wz);
+
+                    glNormal3f(nx, ny, nz);
+                    glVertex3f(wx, wy, wz);
+                }
             }
+
+            glEnd();
         }
 
-        glEnd();
+
+        // -------- TREE PASS --------
+        {
+            float time = SDL_GetTicks() * 0.001f;
+
+
+            draw_trees_near(cam_x, cam_z, time);
+
+        }
+
+
+
+        // -------- GRASS PASS --------
+        draw_grass(cam_x, cam_z, SDL_GetTicks() * 0.001f);
+
+
+
+        glDisable(GL_FOG);
+        glEnable(GL_LIGHTING);
     }
-
-    // -------- TREE PASS (TEST) --------
-    {
-        float time = SDL_GetTicks() * 0.001f;
-
-        // One guaranteed visible tree
-        draw_tree(12.0f, -6.0f, time);
-
-        // A second for depth
-        draw_tree(-18.0f, 14.0f, time);
-    }
-
-
-    // -------- GRASS PASS --------
-    draw_grass(cam_x, cam_z, SDL_GetTicks() * 0.001f);
-
-
-
-    glDisable(GL_FOG);
-    glEnable(GL_LIGHTING);
-}
