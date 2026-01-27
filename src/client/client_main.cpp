@@ -30,6 +30,7 @@
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
+#include "sentinel/net/protocol/chat.hpp"
 
 
 
@@ -647,12 +648,17 @@ int main() {
                         chat_active = true;
                         chat_buffer.clear();
                     }
-                    else {
-                        if (!chat_buffer.empty()) {
-                            push_chat_line(chat_buffer);
-                            // TODO: send to server here
-                            chat_buffer.clear();
-                        }
+                    if (!chat_buffer.empty()) {
+                        ChatMessage msg{};
+                        msg.player_id = local_player_id;
+                        strncpy(msg.name, "Player", MAX_NAME_LEN - 1);
+                        strncpy(msg.text, chat_buffer.c_str(), MAX_CHAT_TEXT - 1);
+
+                        net_send_raw_to(&msg, sizeof(msg), server);
+
+                        chat_buffer.clear();
+                    }
+
                         chat_active = false;
                     }
                     continue;
@@ -824,6 +830,16 @@ int main() {
                 printf("[client] assigned id=%u\n", local_player_id);
             }
         }
+
+        ChatMessage chat{};
+        sockaddr_in chat_from{};
+
+        while (net_recv_raw_from(&chat, sizeof(chat), chat_from) == sizeof(chat)) {
+            std::string line =
+                std::string(chat.name) + ": " + std::string(chat.text);
+            push_chat_line(line);
+        }
+
 
         // Send local snapshot
         if (local_player_id != 0) {

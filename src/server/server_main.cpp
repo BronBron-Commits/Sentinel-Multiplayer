@@ -7,6 +7,7 @@
 
 #include "sentinel/net/protocol/snapshot.hpp"
 #include "sentinel/net/net_api.hpp"   // PacketHeader / PacketType
+#include "sentinel/net/protocol/chat.hpp"
 
 // ------------------------------------------------------------
 // State
@@ -210,6 +211,33 @@ int main() {
             continue;
         }
 
+        // ----------------------------------------------------
+// CHAT MESSAGE
+// ----------------------------------------------------
+        if (n == sizeof(ChatMessage)) {
+            ChatMessage msg{};
+            std::memcpy(&msg, buffer, sizeof(msg));
+
+            if (!addr_to_id.count(key))
+                continue;
+
+            uint32_t pid = addr_to_id[key];
+            msg.player_id = pid;
+
+            // rebroadcast to ALL clients
+            for (const auto& [_, addr] : id_to_addr) {
+                sendto(
+                    sockfd,
+                    &msg,
+                    sizeof(msg),
+                    0,
+                    (sockaddr*)&addr,
+                    sizeof(addr)
+                );
+            }
+
+            continue;
+        }
 
         // Unknown packet → ignore
     }
