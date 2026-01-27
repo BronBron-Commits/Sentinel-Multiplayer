@@ -9,6 +9,8 @@
 
 #include <glad/glad.h>
 #include <SDL.h>
+#include <SDL_ttf.h>
+
 #include <GL/glu.h>
 #include <string>
 
@@ -56,6 +58,8 @@ constexpr float CAM_ZOOM_SPEED = 1.2f;
 
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
+
+static TTF_Font* g_chat_font = nullptr;
 
 static int g_fb_w = 1280;
 static int g_fb_h = 720;
@@ -427,12 +431,89 @@ static void draw_ufo()
     glDisable(GL_BLEND);
 }
 
+static GLuint render_text_texture(
+    const std::string& text,
+    int& out_w,
+    int& out_h
+) {
+    SDL_Color white = { 220, 230, 255, 255 };
+
+    SDL_Surface* raw = TTF_RenderUTF8_Blended(
+        g_chat_font,
+        text.c_str(),
+        white
+    );
+
+    if (!raw)
+        return 0;
+
+    // Force known pixel format
+    SDL_Surface* surf = SDL_ConvertSurfaceFormat(
+        raw,
+        SDL_PIXELFORMAT_ABGR8888,
+        0
+    );
+
+    SDL_FreeSurface(raw);
+
+    if (!surf)
+        return 0;
+
+
+    if (!surf)
+        return 0;
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        surf->w,
+        surf->h,
+        0,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        surf->pixels
+    );
+
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    out_w = surf->w;
+    out_h = surf->h;
+
+    SDL_FreeSurface(surf);
+    return tex;
+}
+
+
 
 // ------------------------------------------------------------
 int main() {
     setbuf(stdout, nullptr);
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+    if (TTF_Init() != 0) {
+        printf("[chat] TTF_Init failed: %s\n", TTF_GetError());
+        return 1;
+    }
+
+    g_chat_font = TTF_OpenFont(
+        "assets/fonts/DejaVuSans-Bold.ttf",
+        16
+    );
+
+    if (!g_chat_font) {
+        printf("[chat] Failed to load font: %s\n", TTF_GetError());
+        return 1;
+    }
+
+
 
     SDL_Window* win = SDL_CreateWindow(
         "Sentinel Multiplayer Client",
@@ -458,6 +539,16 @@ int main() {
     SDL_StartTextInput();
 
     glClearColor(0.05f, 0.07f, 0.10f, 1.0f);
+
+    g_chat_font = TTF_OpenFont(
+        "assets/fonts/DejaVuSans-Bold.ttf",
+        16
+    );
+
+    if (!g_chat_font) {
+        printf("[chat] Failed to load font: %s\n", TTF_GetError());
+        return 1;
+    }
 
 
     init_drone_shader();
@@ -1029,32 +1120,64 @@ int main() {
         glVertex2f(0, g_fb_h);
         glEnd();
 
-        // ---- Typed text (placeholder blocks per char) ----
-        float x = 10.0f;
-        float y = g_fb_h - 22.0f;
+        if (!chat_buffer.empty()) {
+            int tw, th;
+            GLuint tex = render_text_texture(chat_buffer, tw, th);
 
-        glColor3f(0.8f, 0.9f, 1.0f);
-        for (char c : chat_buffer) {
-            glBegin(GL_QUADS);
-            glVertex2f(x, y);
-            glVertex2f(x + 6, y);
-            glVertex2f(x + 6, y + 10);
-            glVertex2f(x, y + 10);
-            glEnd();
-            x += 7;
+            if (tex) {
+                glEnable(GL_TEXTURE_2D);
+                glBindTexture(GL_TEXTURE_2D, tex);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+                glColor4f(1, 1, 1, 1);
+
+                float x = 10.0f;
+                float y = g_fb_h - 24.0f;
+
+                glBegin(GL_QUADS);
+                glTexCoord2f(0, 0); glVertex2f(x, y);
+                glTexCoord2f(1, 0); glVertex2f(x + tw, y);
+                glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
+                glTexCoord2f(0, 1); glVertex2f(x, y + th);
+                glEnd();
+
+                glDeleteTextures(1, &tex);
+                glDisable(GL_TEXTURE_2D);
+            }
         }
+
 
         // ---- Chat history (simple bars) ----
         for (int i = 0; i < chat_line_count; ++i) {
-            float yy = g_fb_h - box_h - 14.0f * (i + 1);
-            glColor4f(0.2f, 0.6f, 1.0f, 0.6f);
+            if (chat_lines[i].empty())
+                continue;
+
+            int tw, th;
+            GLuint tex = render_text_texture(chat_lines[i], tw, th);
+
+            if (!tex)
+                continue;
+
+            float yy = g_fb_h - box_h - 16.0f * (i + 1);
+
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glColor4f(0.9f, 0.95f, 1.0f, 0.85f);
+
             glBegin(GL_QUADS);
-            glVertex2f(10, yy);
-            glVertex2f(10 + chat_lines[i].size() * 7.0f, yy);
-            glVertex2f(10 + chat_lines[i].size() * 7.0f, yy + 10);
-            glVertex2f(10, yy + 10);
+            glTexCoord2f(0, 0); glVertex2f(10, yy);
+            glTexCoord2f(1, 0); glVertex2f(10 + tw, yy);
+            glTexCoord2f(1, 1); glVertex2f(10 + tw, yy + th);
+            glTexCoord2f(0, 1); glVertex2f(10, yy + th);
             glEnd();
+
+            glDeleteTextures(1, &tex);
+            glDisable(GL_TEXTURE_2D);
         }
+
 
         glPopMatrix();
         glMatrixMode(GL_PROJECTION);
@@ -1066,6 +1189,8 @@ int main() {
 
         SDL_GL_SwapWindow(win);
     }
+    TTF_CloseFont(g_chat_font);
+    TTF_Quit();
 
     net_shutdown();
     return 0;

@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
+# ============================================================
+# REQUIRED: Enable vcpkg MANIFEST MODE
+# MUST be before project()
+# ============================================================
+set(VCPKG_FEATURE_FLAGS "manifests")
+
 # IMPORTANT: GLAD IS C CODE
 project(sentinel_multiplayer LANGUAGES C CXX)
 
@@ -36,28 +42,19 @@ endif()
 # ============================================================
 
 add_library(glad STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/src/glad.c
+    external/glad/src/glad.c
 )
 
 target_include_directories(glad PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include/glad
+    external/glad/include
 )
 
 # ============================================================
-# SDL2
+# SDL2 + SDL2_ttf (vcpkg / manifest mode)
 # ============================================================
 
-find_package(SDL2 CONFIG QUIET)
-
-if (TARGET SDL2::SDL2)
-    set(SDL2_TARGET SDL2::SDL2)
-elseif (TARGET SDL2::SDL2main)
-    set(SDL2_TARGET SDL2::SDL2)
-else()
-    find_package(SDL2 REQUIRED)
-    set(SDL2_TARGET ${SDL2_LIBRARIES})
-endif()
+find_package(SDL2 CONFIG REQUIRED)
+find_package(SDL2_ttf CONFIG REQUIRED)
 
 # ============================================================
 # CLIENT
@@ -65,37 +62,40 @@ endif()
 
 if (WIN32)
     add_executable(client
-    src/client/client_main.cpp
-    src/client/render_sky.cpp
-    src/client/render_terrain.cpp
-    src/client/render_drone_shader.cpp
-)
-
+        src/client/client_main.cpp
+        src/client/render_sky.cpp
+        src/client/render_terrain.cpp
+        src/client/render_drone_shader.cpp
+    )
 
     target_include_directories(client PRIVATE
         include
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include
-        ${SDL2_INCLUDE_DIRS}
+        external/glad/include
     )
 
     target_link_libraries(client PRIVATE
         sentinel_net
         glad
-        ${SDL2_TARGET}
+        SDL2::SDL2
+        SDL2_ttf::SDL2_ttf
         opengl32
         glu32
     )
 
     # --------------------------------------------------------
-    # Copy SDL2.dll next to client.exe
+    # Copy SDL2.dll + SDL2_ttf.dll next to client.exe
     # --------------------------------------------------------
-    if (TARGET SDL2::SDL2)
-        add_custom_command(TARGET client POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:SDL2::SDL2>
-                $<TARGET_FILE_DIR:client>
-        )
-    endif()
+    add_custom_command(TARGET client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:SDL2::SDL2>
+            $<TARGET_FILE_DIR:client>
+    )
+
+    add_custom_command(TARGET client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:SDL2_ttf::SDL2_ttf>
+            $<TARGET_FILE_DIR:client>
+    )
 
     # --------------------------------------------------------
     # Copy shaders
