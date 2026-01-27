@@ -19,6 +19,10 @@ static float grass_field(float x, float z) {
     return noise(x * 0.015f, z * 0.015f);
 }
 
+static constexpr float WIND_STRENGTH = 0.18f;
+static constexpr float WIND_FREQ = 0.9f;
+static constexpr float WIND_SCALE = 0.12f;
+
 
 // ============================================================
 // Terrain zones
@@ -189,7 +193,7 @@ static void set_zone_color(TerrainZone zone, float height, float slope, float wx
 // Grass rendering (SAFE + FAST)
 // ============================================================
 
-static void draw_grass(float cam_x, float cam_z) {
+static void draw_grass(float cam_x, float cam_z, float time) {
     glDisable(GL_LIGHTING);
     glEnable(GL_ALPHA_TEST);
     glAlphaFunc(GL_GREATER, 0.2f);
@@ -263,23 +267,58 @@ static void draw_grass(float cam_x, float cam_z) {
                 float px = wx + ox;
                 float pz = wz + oz;
 
+                float blade_phase =
+                    hash(x + i * 19, z + i * 23) * 6.28318f;
+
+                float wind =
+                    std::sin(time * WIND_FREQ +
+                        blade_phase +
+                        noise(px * WIND_SCALE, pz * WIND_SCALE) * 3.0f)
+                    * WIND_STRENGTH;
+
                 float h = GRASS_HEIGHT * (0.6f + hash(x + i * 7, z + i * 11));
+
                 float tint = 0.85f + hash(x + i * 5, z + i * 9) * 0.3f;
                 glColor3f(0.32f * tint, 0.68f * tint, 0.32f * tint);
 
                 glBegin(GL_QUADS);
 
                 // Quad 1
-                glVertex3f(px - GRASS_WIDTH, wy, px == px ? pz : pz);
+                float bend = wind;
+                float bend_tip = bend * 1.4f;
+
+                glVertex3f(px - GRASS_WIDTH, wy, pz);
                 glVertex3f(px + GRASS_WIDTH, wy, pz);
-                glVertex3f(px + GRASS_WIDTH, wy + h, pz);
-                glVertex3f(px - GRASS_WIDTH, wy + h, pz);
+
+                glVertex3f(
+                    px + GRASS_WIDTH + bend_tip,
+                    wy + h,
+                    pz
+                );
+
+                glVertex3f(
+                    px - GRASS_WIDTH + bend_tip,
+                    wy + h,
+                    pz
+                );
+
 
                 // Quad 2 (cross)
                 glVertex3f(px, wy, pz - GRASS_WIDTH);
                 glVertex3f(px, wy, pz + GRASS_WIDTH);
-                glVertex3f(px, wy + h, pz + GRASS_WIDTH);
-                glVertex3f(px, wy + h, pz - GRASS_WIDTH);
+
+                glVertex3f(
+                    px + bend_tip,
+                    wy + h,
+                    pz + GRASS_WIDTH
+                );
+
+                glVertex3f(
+                    px + bend_tip,
+                    wy + h,
+                    pz - GRASS_WIDTH
+                );
+
 
                 glEnd();
             }
@@ -365,7 +404,8 @@ void draw_terrain(float cam_x, float cam_z) {
     }
 
     // -------- GRASS PASS --------
-    draw_grass(cam_x, cam_z);
+    draw_grass(cam_x, cam_z, SDL_GetTicks() * 0.001f);
+
 
 
     glDisable(GL_FOG);
