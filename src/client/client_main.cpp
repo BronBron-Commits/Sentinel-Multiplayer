@@ -6,11 +6,11 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include <SDL.h>
+
 #include <glad/glad.h>
 #include <SDL.h>
 #include <GL/glu.h>
-
+#include <string>
 
 #include <cmath>
 #include <cstdio>
@@ -59,6 +59,29 @@ constexpr double INTERP_DELAY = 0.45; // seconds
 
 static int g_fb_w = 1280;
 static int g_fb_h = 720;
+
+// ------------------------------------------------------------
+// Chat UI state
+// ------------------------------------------------------------
+static bool chat_active = false;
+static std::string chat_buffer;
+
+// simple chat history (client-side only for now)
+static constexpr int MAX_CHAT_LINES = 6;
+static std::string chat_lines[MAX_CHAT_LINES];
+static int chat_line_count = 0;
+
+static void push_chat_line(const std::string& s) {
+    if (chat_line_count < MAX_CHAT_LINES) {
+        chat_lines[chat_line_count++] = s;
+    }
+    else {
+        for (int i = 1; i < MAX_CHAT_LINES; ++i)
+            chat_lines[i - 1] = chat_lines[i];
+        chat_lines[MAX_CHAT_LINES - 1] = s;
+    }
+}
+
 
 static void upload_fixed_matrices()
 {
@@ -422,6 +445,21 @@ int main() {
 
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
+    if (!ctx) {
+        printf("SDL_GL_CreateContext failed\n");
+        return 1;
+    }
+
+    if (!gladLoadGL()) {
+        printf("gladLoadGL failed\n");
+        return 1;
+    }
+
+    SDL_StartTextInput();
+
+    glClearColor(0.05f, 0.07f, 0.10f, 1.0f);
+
+
     init_drone_shader();
 
     SDL_GL_SetSwapInterval(1);
@@ -507,6 +545,47 @@ int main() {
                 running = false;
             }
 
+            // ------------------------------------------------------------
+// Chat input handling
+// ------------------------------------------------------------
+            if (e.type == SDL_KEYDOWN) {
+                if (e.key.keysym.sym == SDLK_RETURN ||
+                    e.key.keysym.sym == SDLK_KP_ENTER) {
+
+                    if (!chat_active) {
+                        chat_active = true;
+                        chat_buffer.clear();
+                    }
+                    else {
+                        if (!chat_buffer.empty()) {
+                            push_chat_line(chat_buffer);
+                            // TODO: send to server here
+                            chat_buffer.clear();
+                        }
+                        chat_active = false;
+                    }
+                    continue;
+                }
+
+                if (chat_active && e.key.keysym.sym == SDLK_ESCAPE) {
+                    chat_active = false;
+                    chat_buffer.clear();
+                    continue;
+                }
+
+                if (chat_active && e.key.keysym.sym == SDLK_BACKSPACE) {
+                    if (!chat_buffer.empty())
+                        chat_buffer.pop_back();
+                    continue;
+                }
+            }
+
+            if (chat_active && e.type == SDL_TEXTINPUT) {
+                chat_buffer += e.text.text;
+                continue;
+            }
+
+
             // ----- WINDOW RESIZE / FULLSCREEN -----
             if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
@@ -530,8 +609,15 @@ int main() {
 
         SDL_PumpEvents();
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        if (chat_active) {
+            // Freeze player control while typing
+            keys = nullptr;
+        }
+
+
         static bool prev_space = false;
-        bool space = keys[SDL_SCANCODE_SPACE];
+        bool space = keys && keys[SDL_SCANCODE_SPACE];
+
 
         if (space && !prev_space) {
             if (!missile.active) {
@@ -560,21 +646,26 @@ int main() {
 
         }
 
-        prev_space = space;
+       
 
         prev_space = space;
 
         float forward = 0, strafe = 0, vertical = 0, turn = 0;
-        boost_active = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
+        boost_active = keys && (
+            keys[SDL_SCANCODE_LSHIFT] ||
+            keys[SDL_SCANCODE_RSHIFT]
+            );
 
-        if (keys[SDL_SCANCODE_UP])    forward += 1;
-        if (keys[SDL_SCANCODE_DOWN])  forward -= 1;
-        if (keys[SDL_SCANCODE_LEFT])  strafe  -= 1;
-        if (keys[SDL_SCANCODE_RIGHT]) strafe  += 1;
-        if (keys[SDL_SCANCODE_W])     vertical += 1;
-        if (keys[SDL_SCANCODE_S])     vertical -= 1;
-        if (keys[SDL_SCANCODE_A])     turn += 1;
-        if (keys[SDL_SCANCODE_D])     turn -= 1;
+
+        if (keys && keys[SDL_SCANCODE_UP])    forward += 1;
+        if (keys && keys[SDL_SCANCODE_DOWN])  forward -= 1;
+        if (keys && keys[SDL_SCANCODE_LEFT])  strafe -= 1;
+        if (keys && keys[SDL_SCANCODE_RIGHT]) strafe += 1;
+        if (keys && keys[SDL_SCANCODE_W])     vertical += 1;
+        if (keys && keys[SDL_SCANCODE_S])     vertical -= 1;
+        if (keys && keys[SDL_SCANCODE_A])     turn += 1;
+        if (keys && keys[SDL_SCANCODE_D])     turn -= 1;
+
 
         yaw += turn * YAW_SPEED * dt;
 
@@ -908,6 +999,70 @@ int main() {
             glEnable(GL_COLOR_MATERIAL);
 
         }
+
+        // ------------------------------------------------------------
+// Chat UI (2D overlay)
+// ------------------------------------------------------------
+        glPushAttrib(GL_ENABLE_BIT | GL_TRANSFORM_BIT);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glLoadIdentity();
+        glOrtho(0, g_fb_w, g_fb_h, 0, -1, 1);
+
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+
+        // ---- Chat background ----
+        int box_h = 32;
+        glColor4f(0.0f, 0.0f, 0.0f, 0.6f);
+        glBegin(GL_QUADS);
+        glVertex2f(0, g_fb_h - box_h);
+        glVertex2f(g_fb_w, g_fb_h - box_h);
+        glVertex2f(g_fb_w, g_fb_h);
+        glVertex2f(0, g_fb_h);
+        glEnd();
+
+        // ---- Typed text (placeholder blocks per char) ----
+        float x = 10.0f;
+        float y = g_fb_h - 22.0f;
+
+        glColor3f(0.8f, 0.9f, 1.0f);
+        for (char c : chat_buffer) {
+            glBegin(GL_QUADS);
+            glVertex2f(x, y);
+            glVertex2f(x + 6, y);
+            glVertex2f(x + 6, y + 10);
+            glVertex2f(x, y + 10);
+            glEnd();
+            x += 7;
+        }
+
+        // ---- Chat history (simple bars) ----
+        for (int i = 0; i < chat_line_count; ++i) {
+            float yy = g_fb_h - box_h - 14.0f * (i + 1);
+            glColor4f(0.2f, 0.6f, 1.0f, 0.6f);
+            glBegin(GL_QUADS);
+            glVertex2f(10, yy);
+            glVertex2f(10 + chat_lines[i].size() * 7.0f, yy);
+            glVertex2f(10 + chat_lines[i].size() * 7.0f, yy + 10);
+            glVertex2f(10, yy + 10);
+            glEnd();
+        }
+
+        glPopMatrix();
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);
+
+        glPopAttrib();
+
 
         SDL_GL_SwapWindow(win);
     }
