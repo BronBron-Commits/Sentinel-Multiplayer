@@ -44,13 +44,13 @@ static constexpr float GRID_SCALE = 2.0f;
 static constexpr float HEIGHT_GAIN = 8.0f;
 
 // Grass tuning (PERFORMANCE CRITICAL)
-static constexpr float GRASS_NEAR_DIST = 32.0f;
+static constexpr float GRASS_NEAR_DIST = 40.0f;
 static constexpr float GRASS_FAR_DIST = 65.0f;
 static constexpr float GRASS_HEIGHT = 0.5f;
 static constexpr float GRASS_WIDTH = 0.065f;
-static constexpr float GRASS_LOD0_END = 30.0f;  // full
-static constexpr float GRASS_LOD1_END = 55.0f;  // reduced
-static constexpr float GRASS_LOD2_END = 75.0f;  // billboard
+static constexpr float GRASS_LOD0_END = 40.0f;  // full
+static constexpr float GRASS_LOD1_END = 75.0f;  // reduced
+static constexpr float GRASS_LOD2_END = 95.0f;  // billboard
 
 // ============================================================
 // Math helpers
@@ -397,10 +397,12 @@ static void draw_tree(float x, float z, float time) {
     // Canopy (volumetric leaf clusters)
     // ------------------------------
     glDisable(GL_LIGHTING);
-    glDepthMask(GL_FALSE);
-    glEnable(GL_BLEND);
 
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_BLEND);
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.35f);
+
+    glDepthMask(GL_TRUE);   // IMPORTANT
 
     const int CLUSTERS = 14;
     const float CANOPY_R = 2.4f;
@@ -428,11 +430,10 @@ static void draw_tree(float x, float z, float time) {
 
         float tint = 0.85f + hb * 0.15f;
 
-        glColor4f(
+        glColor3f(
             0.20f * tint,
             0.55f * tint,
-            0.22f * tint,
-            0.75f
+            0.22f * tint
         );
 
         glBegin(GL_QUADS);
@@ -452,8 +453,9 @@ static void draw_tree(float x, float z, float time) {
         glEnd();
     }
 
-    glDisable(GL_BLEND);
-    glDepthMask(GL_TRUE);
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_LIGHTING);
+
 
     glEnable(GL_LIGHTING);
 
@@ -461,9 +463,9 @@ static void draw_tree(float x, float z, float time) {
 
 static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
-    constexpr int   TREE_RADIUS = 22;     // tiles
-    constexpr float TREE_FADE_START = 75.0f;
-    constexpr float TREE_FADE_END = 95.0f;
+    constexpr int   TREE_RADIUS = 32;     // tiles
+    constexpr float TREE_FADE_START = 110.0f;
+    constexpr float TREE_FADE_END = 145.0f;
 
     int cx = stable_cell(anchor_x);
     int cz = stable_cell(anchor_z);
