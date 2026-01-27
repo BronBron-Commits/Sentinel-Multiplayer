@@ -16,6 +16,17 @@
 static constexpr float STAR_TWINKLE_FREQ = 0.6f;
 static constexpr float STAR_TWINKLE_AMPL = 0.15f;
 
+// ============================================================
+// High altitude clouds
+// ============================================================
+
+static constexpr float CLOUD_ALTITUDE = 0.82f;   // relative to dome
+static constexpr float CLOUD_THICKNESS = 0.14f;
+static constexpr float CLOUD_BRIGHTNESS = 0.65f;
+static constexpr float CLOUD_SPEED = 0.01f;
+static constexpr float CLOUD_COVERAGE = 0.35f;
+
+
 // Milky Way tuning
 static constexpr float MILKYWAY_BRIGHTNESS = 0.35f;
 static constexpr float MILKYWAY_WIDTH = 0.22f;
@@ -32,6 +43,14 @@ static inline float clampf(float v, float lo, float hi) {
 
 static inline float mw_noise(float x) {
     return std::fmod(std::sin(x * 12.9898f) * 43758.5453f, 1.0f);
+}
+
+
+static inline float cloud_noise(float x, float y) {
+    float n =
+        std::sin(x * 1.7f + y * 2.3f) *
+        std::sin(x * 0.9f - y * 1.1f);
+    return clampf(n * 0.5f + 0.5f, 0.0f, 1.0f);
 }
 
 // ============================================================
@@ -79,7 +98,8 @@ void draw_sky(float t) {
 
                 glColor3f(r, g, b);
                 glVertex3f(x * R, y * R, z * R);
-            }
+ 
+           }
 
             // upper vertex
             {
@@ -162,6 +182,113 @@ void draw_sky(float t) {
     // ============================================================
 
     float night = clampf(std::sin(t * 0.05f) * 0.5f + 0.5f, 0.0f, 1.0f);
+
+    // ============================================================
+// High altitude clouds (thin shell)
+// ============================================================
+
+    {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        const int CL_LAT = 18;
+        const int CL_LON = 48;
+
+        float cloud_t = t * CLOUD_SPEED;
+
+        for (int i = 0; i < CL_LAT; ++i) {
+            float v0 = float(i) / CL_LAT;
+            float v1 = float(i + 1) / CL_LAT;
+
+            float phi0 = (CLOUD_ALTITUDE + (v0 - 0.5f) * CLOUD_THICKNESS) * 3.14159f * 0.5f;
+            float phi1 = (CLOUD_ALTITUDE + (v1 - 0.5f) * CLOUD_THICKNESS) * 3.14159f * 0.5f;
+
+            glBegin(GL_TRIANGLE_STRIP);
+
+            for (int j = 0; j <= CL_LON; ++j) {
+                float u = float(j) / CL_LON;
+                float theta = u * 6.28318f;
+
+                // ---------- lower cloud strip ----------
+                {
+                    float phi = phi0;
+
+                    float x = std::sin(phi) * std::cos(theta);
+                    float y = std::cos(phi);
+                    float z = std::sin(phi) * std::sin(theta);
+
+                    float n = cloud_noise(
+                        theta + cloud_t,
+                        phi * 4.0f
+                    );
+
+                    float density = clampf(
+                        (n - CLOUD_COVERAGE) * 2.0f,
+                        0.0f,
+                        1.0f
+                    );
+
+                    float sun_dot = clampf(
+                        x * sx + y * sy + z * sz,
+                        0.0f,
+                        1.0f
+                    );
+
+                    float light = 0.4f + sun_dot * 0.6f;
+
+                    float alpha =
+                        density *
+                        CLOUD_BRIGHTNESS *
+                        (1.0f - night * 0.6f);
+
+                    glColor4f(light, light, light, alpha);
+                    glVertex3f(x * R, y * R, z * R);
+                }
+
+                // ---------- upper cloud strip ----------
+                {
+                    float phi = phi1;
+
+                    float x = std::sin(phi) * std::cos(theta);
+                    float y = std::cos(phi);
+                    float z = std::sin(phi) * std::sin(theta);
+
+                    float n = cloud_noise(
+                        theta + cloud_t,
+                        phi * 4.0f
+                    );
+
+                    float density = clampf(
+                        (n - CLOUD_COVERAGE) * 2.0f,
+                        0.0f,
+                        1.0f
+                    );
+
+                    float sun_dot = clampf(
+                        x * sx + y * sy + z * sz,
+                        0.0f,
+                        1.0f
+                    );
+
+                    float light = 0.4f + sun_dot * 0.6f;
+
+                    float alpha =
+                        density *
+                        CLOUD_BRIGHTNESS *
+                        (1.0f - night * 0.6f);
+
+                    glColor4f(light, light, light, alpha);
+                    glVertex3f(x * R, y * R, z * R);
+                }
+
+            }
+
+            glEnd();
+        }
+
+        glDisable(GL_BLEND);
+    }
+
 
     // ============================================================
     // Milky Way band (behind stars)
@@ -278,4 +405,11 @@ void draw_sky(float t) {
 
         glEnd();
     }
+}
+
+#include "client/camera.hpp"
+
+void draw_low_clouds(const Camera&, float)
+{
+    // TODO: low altitude cloud layer (alpha-2)
 }

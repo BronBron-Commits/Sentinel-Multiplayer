@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 #include "client/render_grid.hpp"
 #include "client/render_drone.hpp"
@@ -30,6 +31,7 @@
 #include "client/camera.hpp"
 #include "client/render_sky.hpp"
 #include "client/render_drone_mesh.hpp"
+#include "client/render_clouds.hpp"
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
@@ -46,6 +48,16 @@ static int g_drone_move_channel = -1;
 static Mix_Chunk* g_drone_move_boost_sfx = nullptr;
 static bool g_drone_boost_active = false;
 static bool pause_menu_open = false;
+
+// ------------------------------------------------------------
+// Forward declarations (text helpers)
+// ------------------------------------------------------------
+static void wrap_text(
+    TTF_Font* font,
+    const std::string& text,
+    int max_width,
+    std::vector<std::string>& out_lines
+);
 
 static float frand(float a, float b);
 
@@ -127,6 +139,11 @@ constexpr float CAM_ZOOM_SPEED = 1.2f;
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
 
+constexpr int CHAT_PANEL_WIDTH = 420;
+constexpr int CHAT_PANEL_PADDING = 12;
+constexpr int CHAT_INPUT_HEIGHT = 36;
+constexpr int CHAT_LINE_HEIGHT = 22;
+
 
 
 static TTF_Font* g_chat_font = nullptr;
@@ -157,20 +174,32 @@ constexpr int CHAT_MAX_WIDTH = 520;
 constexpr int CHAT_MARGIN = 12;
 
 // simple chat history (client-side only for now)
-static constexpr int MAX_CHAT_LINES = 6;
-static std::string chat_lines[MAX_CHAT_LINES];
-static int chat_line_count = 0;
+static constexpr int MAX_CHAT_LINES = 24;
+static std::vector<std::string> chat_lines;
+
 
 static void push_chat_line(const std::string& s) {
-    if (chat_line_count < MAX_CHAT_LINES) {
-        chat_lines[chat_line_count++] = s;
+    std::vector<std::string> wrapped;
+
+    int max_text_width =
+        CHAT_PANEL_WIDTH - CHAT_PANEL_PADDING * 2;
+
+    wrap_text(
+        g_chat_font,
+        s,
+        max_text_width,
+        wrapped
+    );
+
+    for (const auto& line : wrapped) {
+        chat_lines.push_back(line);
     }
-    else {
-        for (int i = 1; i < MAX_CHAT_LINES; ++i)
-            chat_lines[i - 1] = chat_lines[i];
-        chat_lines[MAX_CHAT_LINES - 1] = s;
+
+    while ((int)chat_lines.size() > MAX_CHAT_LINES) {
+        chat_lines.erase(chat_lines.begin());
     }
 }
+
 
 // ------------------------------------------------------------
 // Player identity (name entry screen)
@@ -890,6 +919,46 @@ static void draw_unit_cube()
     glEnd();
 }
 
+static void wrap_text(
+    TTF_Font* font,
+    const std::string& text,
+    int max_width,
+    std::vector<std::string>& out_lines
+) {
+    out_lines.clear();
+
+    std::string word;
+    std::string line;
+
+    for (size_t i = 0; i <= text.size(); ++i) {
+        char c = (i < text.size()) ? text[i] : ' ';
+
+        if (c == ' ' || i == text.size()) {
+            std::string test =
+                line.empty() ? word : line + " " + word;
+
+            int w, h;
+            TTF_SizeUTF8(font, test.c_str(), &w, &h);
+
+            if (w > max_width && !line.empty()) {
+                out_lines.push_back(line);
+                line = word;
+            }
+            else {
+                line = test;
+            }
+
+            word.clear();
+        }
+        else {
+            word.push_back(c);
+        }
+    }
+
+    if (!line.empty())
+        out_lines.push_back(line);
+}
+
 
 
 // ------------------------------------------------------------
@@ -911,7 +980,7 @@ int main() {
 
     g_chat_font = TTF_OpenFont(
         "assets/fonts/DejaVuSans-Bold.ttf",
-        16
+        18
     );
 
     g_title_font = TTF_OpenFont(
@@ -1602,6 +1671,7 @@ SDL_StartTextInput();
 glEnable(GL_LIGHTING);
 glEnable(GL_COLOR_MATERIAL);
 draw_terrain(cam.pos.x, cam.pos.z);
+draw_low_clouds(cam, now * 0.001f);
 
 
 
@@ -1877,15 +1947,29 @@ draw_terrain(cam.pos.x, cam.pos.z);
         glPushMatrix();
         glLoadIdentity();
 
-        // ---- Chat background ----
-        int box_h = 32;
-        glColor4f(0.0f, 0.0f, 0.0f, 0.6f);
+        int panel_x = CHAT_MARGIN;
+        int panel_y = g_fb_h - CHAT_MARGIN;
+
+        int history_height =
+            (int)chat_lines.size() *
+            (CHAT_LINE_HEIGHT + CHAT_LINE_SPACING);
+
+
+        int panel_height =
+            history_height +
+            CHAT_INPUT_HEIGHT +
+            CHAT_PANEL_PADDING * 2;
+
+        glColor4f(0.0f, 0.0f, 0.0f, 0.65f);
         glBegin(GL_QUADS);
-        glVertex2f(0, g_fb_h - box_h);
-        glVertex2f(g_fb_w, g_fb_h - box_h);
-        glVertex2f(g_fb_w, g_fb_h);
-        glVertex2f(0, g_fb_h);
+        glVertex2f(panel_x, panel_y - panel_height);
+        glVertex2f(panel_x + CHAT_PANEL_WIDTH, panel_y - panel_height);
+        glVertex2f(panel_x + CHAT_PANEL_WIDTH, panel_y);
+        glVertex2f(panel_x, panel_y);
         glEnd();
+
+        float x = panel_x + CHAT_PANEL_PADDING;
+        float y = panel_y - CHAT_INPUT_HEIGHT + 6.0f;
 
         if (!chat_buffer.empty()) {
             int tw, th;
@@ -1907,8 +1991,7 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
                 glColor4f(1, 1, 1, 1);
 
-                float x = 10.0f;
-                float y = g_fb_h - 24.0f;
+
 
                 glBegin(GL_QUADS);
                 glTexCoord2f(0, 0); glVertex2f(x, y);
@@ -1923,39 +2006,47 @@ draw_terrain(cam.pos.x, cam.pos.z);
         }
 
 
-        // ---- Chat history (simple bars) ----
-        for (int i = 0; i < chat_line_count; ++i) {
-            if (chat_lines[i].empty())
+        for (size_t i = 0; i < chat_lines.size(); ++i) {
+            const std::string& line = chat_lines[i];
+            if (line.empty())
                 continue;
 
             int tw, th;
             GLuint tex = render_text_texture(
                 g_chat_font,
-                chat_lines[i],
+                line,
                 tw,
                 th
             );
 
-
             if (!tex)
                 continue;
 
-            float yy = g_fb_h - box_h - 16.0f * (i + 1);
+            float xx = panel_x + CHAT_PANEL_PADDING;
+
+            float yy =
+                panel_y
+                - CHAT_PANEL_PADDING
+                - CHAT_INPUT_HEIGHT
+                - (chat_lines.size() - i) *
+                (CHAT_LINE_HEIGHT + CHAT_LINE_SPACING);
 
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, tex);
             glColor4f(0.9f, 0.95f, 1.0f, 0.85f);
 
             glBegin(GL_QUADS);
-            glTexCoord2f(0, 0); glVertex2f(10, yy);
-            glTexCoord2f(1, 0); glVertex2f(10 + tw, yy);
-            glTexCoord2f(1, 1); glVertex2f(10 + tw, yy + th);
-            glTexCoord2f(0, 1); glVertex2f(10, yy + th);
+            glTexCoord2f(0, 0); glVertex2f(xx, yy);
+            glTexCoord2f(1, 0); glVertex2f(xx + tw, yy);
+            glTexCoord2f(1, 1); glVertex2f(xx + tw, yy + th);
+            glTexCoord2f(0, 1); glVertex2f(xx, yy + th);
             glEnd();
 
             glDeleteTextures(1, &tex);
             glDisable(GL_TEXTURE_2D);
         }
+
+
 
 
         glPopMatrix();
@@ -1994,33 +2085,49 @@ draw_terrain(cam.pos.x, cam.pos.z);
             glVertex2f(0, g_fb_h);
             glEnd();
 
-            // PAUSED text
-            int tw, th;
-            GLuint tex = render_text_texture(
-                g_title_font,
-                "PAUSED",
-                tw,
-                th
+            std::vector<std::string> input_lines;
+            wrap_text(
+                g_chat_font,
+                chat_buffer,
+                CHAT_PANEL_WIDTH - CHAT_PANEL_PADDING * 2,
+                input_lines
             );
 
-            if (tex) {
-                float x = g_fb_w * 0.5f - tw * 0.5f;
-                float y = g_fb_h * 0.4f;
+            float input_y = g_fb_h * 0.5f;
+            float x = g_fb_w * 0.5f - CHAT_PANEL_WIDTH * 0.5f;
+
+
+            for (const auto& line : input_lines) {
+                int tw, th;
+                GLuint tex = render_text_texture(
+                    g_chat_font,
+                    line,
+                    tw,
+                    th
+                );
+
+                if (!tex)
+                    continue;
 
                 glEnable(GL_TEXTURE_2D);
                 glBindTexture(GL_TEXTURE_2D, tex);
                 glColor4f(1, 1, 1, 1);
 
                 glBegin(GL_QUADS);
-                glTexCoord2f(0, 0); glVertex2f(x, y);
-                glTexCoord2f(1, 0); glVertex2f(x + tw, y);
-                glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
-                glTexCoord2f(0, 1); glVertex2f(x, y + th);
+                glTexCoord2f(0, 0); glVertex2f(x, input_y);
+                glTexCoord2f(1, 0); glVertex2f(x + tw, input_y);
+                glTexCoord2f(1, 1); glVertex2f(x + tw, input_y + th);
+                glTexCoord2f(0, 1); glVertex2f(x, input_y + th);
                 glEnd();
 
                 glDeleteTextures(1, &tex);
                 glDisable(GL_TEXTURE_2D);
+
+                input_y += CHAT_LINE_HEIGHT;
             }
+
+
+
 
             glPopMatrix();
             glMatrixMode(GL_PROJECTION);
