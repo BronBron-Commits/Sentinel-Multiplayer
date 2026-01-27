@@ -87,6 +87,13 @@ static void push_chat_line(const std::string& s) {
     }
 }
 
+// ------------------------------------------------------------
+// Player identity (name entry screen)
+// ------------------------------------------------------------
+static bool name_confirmed = false;
+static std::string player_name;
+static std::string name_buffer;
+
 
 static void upload_fixed_matrices()
 {
@@ -589,6 +596,7 @@ int main() {
 
     Uint32 last_ticks = SDL_GetTicks();
     bool running = true;
+    bool in_name_entry = true;
 
     while (running) {
         Uint32 now = SDL_GetTicks();
@@ -625,6 +633,48 @@ int main() {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
 
+            // ------------------------------------------------------------
+// Name entry screen input
+// ------------------------------------------------------------
+            if (in_name_entry) {
+
+                if (e.type == SDL_KEYDOWN) {
+
+                    if (e.key.keysym.sym == SDLK_RETURN ||
+                        e.key.keysym.sym == SDLK_KP_ENTER) {
+
+                        if (!name_buffer.empty()) {
+                            player_name = name_buffer;
+                            name_confirmed = true;
+                            in_name_entry = false;
+                            name_buffer.clear();
+                        }
+                        continue;
+                    }
+
+                    if (e.key.keysym.sym == SDLK_BACKSPACE) {
+                        if (!name_buffer.empty())
+                            name_buffer.pop_back();
+                        continue;
+                    }
+
+                    if (e.key.keysym.sym == SDLK_ESCAPE) {
+                        name_buffer.clear();
+                        continue;
+                    }
+                }
+
+                if (e.type == SDL_TEXTINPUT) {
+                    if (name_buffer.size() < 16)   // hard limit
+                        name_buffer += e.text.text;
+                    continue;
+                }
+
+                // IMPORTANT: swallow all other events
+                continue;
+            }
+
+
             if (e.type == SDL_QUIT) {
                 running = false;
             }
@@ -640,7 +690,9 @@ int main() {
                     if (chat_active && !chat_buffer.empty()) {
                         ChatMessage msg{};
                         msg.player_id = local_player_id;
-                        strncpy(msg.name, "Player", MAX_NAME_LEN - 1);
+                        strncpy(msg.name, player_name.c_str(), MAX_NAME_LEN - 1);
+                        msg.name[MAX_NAME_LEN - 1] = '\0';
+
                         strncpy(msg.text, chat_buffer.c_str(), MAX_CHAT_TEXT - 1);
                         net_send_raw_to(&msg, sizeof(msg), server);
                     }
@@ -858,6 +910,94 @@ int main() {
 
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // ------------------------------------------------------------
+        // Name entry screen rendering
+        // ------------------------------------------------------------
+        if (in_name_entry) {
+
+            glPushAttrib(GL_ENABLE_BIT | GL_TRANSFORM_BIT);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_LIGHTING);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glMatrixMode(GL_PROJECTION);
+            glPushMatrix();
+            glLoadIdentity();
+            glOrtho(0, g_fb_w, g_fb_h, 0, -1, 1);
+
+            glMatrixMode(GL_MODELVIEW);
+            glPushMatrix();
+            glLoadIdentity();
+
+            // Background dim
+            glColor4f(0, 0, 0, 0.75f);
+            glBegin(GL_QUADS);
+            glVertex2f(0, 0);
+            glVertex2f(g_fb_w, 0);
+            glVertex2f(g_fb_w, g_fb_h);
+            glVertex2f(0, g_fb_h);
+            glEnd();
+
+            // Prompt
+            int tw, th;
+            GLuint prompt_tex = render_text_texture("Enter your name:", tw, th);
+            if (prompt_tex) {
+                float x = g_fb_w * 0.5f - tw * 0.5f;
+                float y = g_fb_h * 0.4f;
+
+                glEnable(GL_TEXTURE_2D);
+                glBindTexture(GL_TEXTURE_2D, prompt_tex);
+                glColor4f(1, 1, 1, 1);
+
+                glBegin(GL_QUADS);
+                glTexCoord2f(0, 0); glVertex2f(x, y);
+                glTexCoord2f(1, 0); glVertex2f(x + tw, y);
+                glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
+                glTexCoord2f(0, 1); glVertex2f(x, y + th);
+                glEnd();
+
+                glDeleteTextures(1, &prompt_tex);
+                glDisable(GL_TEXTURE_2D);
+            }
+
+            // Name buffer
+            GLuint name_tex = render_text_texture(
+                name_buffer.empty() ? "_" : name_buffer,
+                tw, th
+            );
+
+            if (name_tex) {
+                float x = g_fb_w * 0.5f - tw * 0.5f;
+                float y = g_fb_h * 0.45f;
+
+                glEnable(GL_TEXTURE_2D);
+                glBindTexture(GL_TEXTURE_2D, name_tex);
+                glColor4f(0.9f, 0.95f, 1.0f, 1);
+
+                glBegin(GL_QUADS);
+                glTexCoord2f(0, 0); glVertex2f(x, y);
+                glTexCoord2f(1, 0); glVertex2f(x + tw, y);
+                glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
+                glTexCoord2f(0, 1); glVertex2f(x, y + th);
+                glEnd();
+
+                glDeleteTextures(1, &name_tex);
+                glDisable(GL_TEXTURE_2D);
+            }
+
+            glPopMatrix();
+            glMatrixMode(GL_PROJECTION);
+            glPopMatrix();
+            glMatrixMode(GL_MODELVIEW);
+            glPopAttrib();
+
+            SDL_GL_SwapWindow(win);
+            continue;
+        }
+
+
 
         // ---------- VIEWPORT (REQUIRED EVERY FRAME) ----------
         glViewport(0, 0, g_fb_w, g_fb_h);
