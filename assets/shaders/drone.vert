@@ -9,12 +9,19 @@ uniform mat4 uProj;
 
 out vec3 vWorldPos;
 out vec3 vNormal;
+out vec3 vViewDir;
+
+uniform vec3 uCameraPos;
 
 void main()
 {
     vec4 world = uModel * vec4(aPos, 1.0);
     vWorldPos = world.xyz;
-    vNormal = mat3(transpose(inverse(uModel))) * aNormal;
+
+    mat3 normalMat = mat3(transpose(inverse(uModel)));
+    vNormal = normalize(normalMat * aNormal);
+
+    vViewDir = normalize(uCameraPos - vWorldPos);
 
     gl_Position = uProj * uView * world;
 }

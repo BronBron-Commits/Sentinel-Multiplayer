@@ -66,6 +66,7 @@ if (WIN32)
         src/client/render_sky.cpp
         src/client/render_terrain.cpp
         src/client/render_drone_shader.cpp
+        src/client/render_drone_mesh.cpp
     )
 
     target_include_directories(client PRIVATE

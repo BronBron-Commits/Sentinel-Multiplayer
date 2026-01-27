@@ -1,4 +1,4 @@
-#define SDL_MAIN_HANDLED
+﻿#define SDL_MAIN_HANDLED
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -26,6 +26,7 @@
 
 #include "client/camera.hpp"
 #include "client/render_sky.hpp"
+#include "client/render_drone_mesh.hpp"
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
@@ -63,7 +64,10 @@ constexpr float CAM_ZOOM_SPEED = 1.2f;
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
 
+
+
 static TTF_Font* g_chat_font = nullptr;
+static TTF_Font* g_title_font = nullptr;
 
 static int g_fb_w = 1280;
 static int g_fb_h = 720;
@@ -151,7 +155,7 @@ struct IdlePose {
 };
 
 static IdlePose compute_idle_pose(uint32_t player_id, double t) {
-    // phase offset per player so they don�t sync perfectly
+    // phase offset per player so they don’t sync perfectly
     double phase = player_id * 3.17;
 
     IdlePose p{};
@@ -492,14 +496,16 @@ static void draw_ufo()
 }
 
 static GLuint render_text_texture(
+    TTF_Font* font,
     const std::string& text,
     int& out_w,
     int& out_h
-) {
+)
+{
     SDL_Color white = { 220, 230, 255, 255 };
 
     SDL_Surface* raw = TTF_RenderUTF8_Blended(
-        g_chat_font,
+        font,
         text.c_str(),
         white
     );
@@ -507,7 +513,6 @@ static GLuint render_text_texture(
     if (!raw)
         return 0;
 
-    // Force known pixel format
     SDL_Surface* surf = SDL_ConvertSurfaceFormat(
         raw,
         SDL_PIXELFORMAT_ABGR8888,
@@ -515,11 +520,6 @@ static GLuint render_text_texture(
     );
 
     SDL_FreeSurface(raw);
-
-    if (!surf)
-        return 0;
-
-
     if (!surf)
         return 0;
 
@@ -540,7 +540,6 @@ static GLuint render_text_texture(
         surf->pixels
     );
 
-
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
@@ -550,6 +549,7 @@ static GLuint render_text_texture(
     SDL_FreeSurface(surf);
     return tex;
 }
+
 
 static void draw_rounded_rect(
     float x, float y, float w, float h, float r
@@ -788,6 +788,17 @@ int main() {
         16
     );
 
+    g_title_font = TTF_OpenFont(
+        "assets/fonts/DejaVuSans-Bold.ttf",
+        36   // ← BIG text for name entry
+    );
+
+    if (!g_chat_font || !g_title_font) {
+        printf("[chat] Failed to load font: %s\n", TTF_GetError());
+        return 1;
+    }
+
+
     if (!g_chat_font) {
         printf("[chat] Failed to load font: %s\n", TTF_GetError());
         return 1;
@@ -811,12 +822,16 @@ int main() {
         return 1;
     }
 
-    if (!gladLoadGL()) {
-        printf("gladLoadGL failed\n");
-        return 1;
-    }
+if (!gladLoadGL()) {
+    printf("gladLoadGL failed\n");
+    return 1;
+}
 
-    SDL_StartTextInput();
+// --- CRITICAL: initialize framebuffer size + viewport immediately ---
+SDL_GL_GetDrawableSize(win, &g_fb_w, &g_fb_h);
+glViewport(0, 0, g_fb_w, g_fb_h);
+
+SDL_StartTextInput();
 
     glClearColor(0.05f, 0.07f, 0.10f, 1.0f);
 
@@ -824,6 +839,7 @@ int main() {
 
 
     init_drone_shader();
+    init_drone_mesh();
 
     SDL_GL_SetSwapInterval(1);
 
@@ -1235,7 +1251,12 @@ int main() {
 
             // Prompt
             int tw, th;
-            GLuint prompt_tex = render_text_texture("Enter your name:", tw, th);
+            GLuint prompt_tex = render_text_texture(
+                g_title_font,
+                "Enter your name:",
+                tw, th
+            );
+
             if (prompt_tex) {
                 float x = g_fb_w * 0.5f - tw * 0.5f;
                 float y = g_fb_h * 0.4f;
@@ -1257,9 +1278,11 @@ int main() {
 
             // Name buffer
             GLuint name_tex = render_text_texture(
+                g_title_font,
                 name_buffer.empty() ? "_" : name_buffer,
                 tw, th
             );
+
 
             if (name_tex) {
                 float x = g_fb_w * 0.5f - tw * 0.5f;
@@ -1383,8 +1406,26 @@ draw_terrain(cam.pos.x, cam.pos.z);
                 draw_ufo();
             }
             else {
-                set_metal_material(0.45f, 0.45f, 0.5f);
-                draw_drone(now * 0.001f);
+                glDisable(GL_LIGHTING);
+                glUseProgram(g_drone_program);
+                // REQUIRED: brushed metal direction (world-space)
+                glUniform3f(uBrushDir, 1.0f, 0.0f, 0.0f);
+
+                // material
+                glUniform3f(uBaseColor, 0.45f, 0.45f, 0.50f);
+                glUniform1f(uMetallic, 0.75f);
+                glUniform1f(uRoughness, 0.45f);
+
+                // camera + light
+                glUniform3f(uCameraPos, cam.pos.x, cam.pos.y, cam.pos.z);
+                glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
+                glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
+
+                upload_fixed_matrices();
+                draw_drone_mesh();
+
+                glUseProgram(0);
+                glEnable(GL_LIGHTING);
             }
 
             glPopMatrix();
@@ -1442,9 +1483,30 @@ draw_terrain(cam.pos.x, cam.pos.z);
         glRotatef(idle.roll, 0, 0, 1);
 
 
-        set_metal_material(0.65f, 0.68f, 0.72f); // brushed steel
-        draw_drone(now * 0.001f);
+        glDisable(GL_LIGHTING);
+        glUseProgram(g_drone_program);
+
+        // material
+        glUniform3f(uBaseColor, 0.65f, 0.68f, 0.72f);
+        glUniform1f(uMetallic, 0.90f);
+        glUniform1f(uRoughness, 0.32f);
+
+        // camera + light
+        glUniform3f(uCameraPos, cam.pos.x, cam.pos.y, cam.pos.z);
+        glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
+        glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
+
+        // matrices
+        upload_fixed_matrices();
+
+        // draw
+        draw_drone_mesh();
+
+        glUseProgram(0);
+        glEnable(GL_LIGHTING);
+
         glPopMatrix();
+
 
         glEnable(GL_COLOR_MATERIAL);
 
@@ -1562,7 +1624,8 @@ draw_terrain(cam.pos.x, cam.pos.z);
             upload_fixed_matrices();
 
             // Draw
-            draw_drone(now * 0.001f);
+            draw_drone_mesh();
+
 
             // Restore state
             glUseProgram(0);
@@ -1607,7 +1670,13 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
         if (!chat_buffer.empty()) {
             int tw, th;
-            GLuint tex = render_text_texture(chat_buffer, tw, th);
+            GLuint tex = render_text_texture(
+                g_chat_font,
+                chat_buffer,
+                tw,
+                th
+            );
+
 
             if (tex) {
                 glEnable(GL_TEXTURE_2D);
@@ -1641,7 +1710,13 @@ draw_terrain(cam.pos.x, cam.pos.z);
                 continue;
 
             int tw, th;
-            GLuint tex = render_text_texture(chat_lines[i], tw, th);
+            GLuint tex = render_text_texture(
+                g_chat_font,
+                chat_lines[i],
+                tw,
+                th
+            );
+
 
             if (!tex)
                 continue;
