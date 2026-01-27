@@ -67,36 +67,7 @@ static void wrap_text(
 
 static float frand(float a, float b);
 
-static void get_billboard_axes(
-    const Camera& cam,
-    float& rx, float& ry, float& rz,
-    float& ux, float& uy, float& uz
-) {
-    float fx = cam.target.x - cam.pos.x;
-    float fy = cam.target.y - cam.pos.y;
-    float fz = cam.target.z - cam.pos.z;
 
-    float len = std::sqrt(fx * fx + fy * fy + fz * fz);
-    if (len < 0.0001f) len = 1.0f;
-    fx /= len; fy /= len; fz /= len;
-
-    // world up
-    float wx = 0.0f, wy = 1.0f, wz = 0.0f;
-
-    // right = up × forward
-    rx = wy * fz - wz * fy;
-    ry = wz * fx - wx * fz;
-    rz = wx * fy - wy * fx;
-
-    float rl = std::sqrt(rx * rx + ry * ry + rz * rz);
-    if (rl < 0.0001f) rl = 1.0f;
-    rx /= rl; ry /= rl; rz /= rl;
-
-    // up = forward × right
-    ux = fy * rz - fz * ry;
-    uy = fz * rx - fx * rz;
-    uz = fx * ry - fy * rx;
-}
 
 // ------------------------------------------------------------
 // Performance stats (pause menu)
@@ -663,14 +634,26 @@ static void draw_name_billboard(
     GLuint tex = render_text_texture(g_chat_font, name, tw, th);
     if (!tex) return;
 
-    float rx, ry, rz;
-    float ux, uy, uz;
-    get_billboard_axes(cam, rx, ry, rz, ux, uy, uz);
+
 
     // world size (tweakable)
     float scale = 0.008f;
     float hw = tw * scale * 0.5f;
     float hh = th * scale * 0.5f;
+    // View-aligned billboard axes (camera-facing, no roll)
+    GLfloat mv[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX, mv);
+
+    // OpenGL column-major layout
+    // Camera right vector
+    float rx = mv[0];
+    float ry = mv[4];
+    float rz = mv[8];
+
+    // Camera up vector
+    float ux = mv[1];
+    float uy = mv[5];
+    float uz = mv[9];
 
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
@@ -684,34 +667,19 @@ static void draw_name_billboard(
     glColor4f(1, 1, 1, 0.95f);
 
     glBegin(GL_QUADS);
-    glTexCoord2f(0, 0);
-    glVertex3f(
-        x - rx * hw - ux * hh,
-        y - ry * hw - uy * hh,
-        z - rz * hw - uz * hh
-    );
-
-    glTexCoord2f(1, 0);
-    glVertex3f(
-        x + rx * hw - ux * hh,
-        y + ry * hw - uy * hh,
-        z + rz * hw - uz * hh
-    );
+    glTexCoord2f(0, 1);
+    glVertex3f(x - rx * hw - ux * hh, y - ry * hw - uy * hh, z - rz * hw - uz * hh);
 
     glTexCoord2f(1, 1);
-    glVertex3f(
-        x + rx * hw + ux * hh,
-        y + ry * hw + uy * hh,
-        z + rz * hw + uz * hh
-    );
+    glVertex3f(x + rx * hw - ux * hh, y + ry * hw - uy * hh, z + rz * hw - uz * hh);
 
-    glTexCoord2f(0, 1);
-    glVertex3f(
-        x - rx * hw + ux * hh,
-        y - ry * hw + uy * hh,
-        z - rz * hw + uz * hh
-    );
+    glTexCoord2f(1, 0);
+    glVertex3f(x + rx * hw + ux * hh, y + ry * hw + uy * hh, z + rz * hw + uz * hh);
+
+    glTexCoord2f(0, 0);
+    glVertex3f(x - rx * hw + ux * hh, y - ry * hw + uy * hh, z - rz * hw + uz * hh);
     glEnd();
+
 
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
