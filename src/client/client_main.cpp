@@ -41,6 +41,8 @@
 // ------------------------------------------------------------
 struct Camera;
 static Mix_Music* g_music = nullptr;
+static Mix_Chunk* g_drone_move_sfx = nullptr;
+static int g_drone_move_channel = -1;
 
 static float frand(float a, float b);
 
@@ -86,6 +88,11 @@ static float frand(float a, float b);
 // ADD THIS LINE
 static void draw_unit_cube();
 
+// ------------------------------------------------------------
+// Audio tuning
+// ------------------------------------------------------------
+constexpr int MUSIC_VOLUME = 10;  // very soft ambient
+constexpr int DRONE_BASE_VOLUME = 48;  // audible but not harsh
 
 constexpr float UFO_CRUISE_SPEED = 1.2f;   // slow glide
 constexpr float UFO_STEER_RATE = 0.4f;   // how fast direction changes
@@ -922,8 +929,18 @@ int main() {
         printf("[audio] Failed to load music: %s\n", Mix_GetError());
     }
     else {
-        Mix_VolumeMusic(MIX_MAX_VOLUME / 3); // subtle ambient level
+        Mix_VolumeMusic(MUSIC_VOLUME);
+        // subtle ambient level
         Mix_PlayMusic(g_music, -1);          // infinite seamless loop
+    }
+
+
+    g_drone_move_sfx = Mix_LoadWAV("assets/audio/drone_move.wav");
+    if (!g_drone_move_sfx) {
+        printf("[audio] Failed to load drone movement sound: %s\n", Mix_GetError());
+    }
+    else {
+        Mix_VolumeChunk(g_drone_move_sfx, MIX_MAX_VOLUME / 2);
     }
 
 
@@ -1223,6 +1240,7 @@ SDL_StartTextInput();
             );
 
 
+
         if (keys && keys[SDL_SCANCODE_UP])    forward += 1;
         if (keys && keys[SDL_SCANCODE_DOWN])  forward -= 1;
         if (keys && keys[SDL_SCANCODE_LEFT])  strafe -= 1;
@@ -1231,6 +1249,45 @@ SDL_StartTextInput();
         if (keys && keys[SDL_SCANCODE_S])     vertical -= 1;
         if (keys && keys[SDL_SCANCODE_A])     turn += 1;
         if (keys && keys[SDL_SCANCODE_D])     turn -= 1;
+
+        bool drone_moving =
+            std::fabs(forward) > 0.01f ||
+            std::fabs(strafe) > 0.01f ||
+            std::fabs(vertical) > 0.01f;
+
+        if (g_drone_move_sfx) {
+
+            if (drone_moving) {
+                if (g_drone_move_channel == -1) {
+                    g_drone_move_channel = Mix_PlayChannel(
+                        -1,
+                        g_drone_move_sfx,
+                        -1 // loop forever
+                    );
+                }
+
+                // Optional: scale volume with speed
+                float speed =
+                    std::fabs(forward) +
+                    std::fabs(strafe) +
+                    std::fabs(vertical);
+
+                speed = std::fmin(speed, 1.0f);
+
+                int vol = int(
+                    (MIX_MAX_VOLUME / 4) +
+                    speed * (MIX_MAX_VOLUME / 2)
+                    );
+
+                Mix_Volume(g_drone_move_channel, vol);
+            }
+            else {
+                if (g_drone_move_channel != -1) {
+                    Mix_HaltChannel(g_drone_move_channel);
+                    g_drone_move_channel = -1;
+                }
+            }
+        }
 
 
         drone_yaw += turn * YAW_SPEED * dt;
@@ -1886,7 +1943,14 @@ draw_terrain(cam.pos.x, cam.pos.z);
         g_music = nullptr;
     }
 
+    if (g_drone_move_sfx) {
+        Mix_HaltChannel(g_drone_move_channel);
+        Mix_FreeChunk(g_drone_move_sfx);
+        g_drone_move_sfx = nullptr;
+    }
+
     Mix_CloseAudio();
+
 
     // ------------------------------------------------------------
     // Shutdown other systems
