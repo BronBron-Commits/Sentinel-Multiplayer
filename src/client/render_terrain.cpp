@@ -430,11 +430,13 @@ static void draw_tree(float x, float z, float time) {
 
         float tint = 0.85f + hb * 0.15f;
 
+        // Pink leaves
         glColor3f(
-            0.20f * tint,
-            0.55f * tint,
-            0.22f * tint
+            (0.95f + hb * 0.05f) * tint,   // R
+            (0.45f + hb * 0.10f) * tint,   // G
+            (0.65f + hb * 0.15f) * tint    // B
         );
+
 
         glBegin(GL_QUADS);
 
