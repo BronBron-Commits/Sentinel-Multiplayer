@@ -33,6 +33,9 @@
 #include "sentinel/net/protocol/chat.hpp"
 
 
+constexpr float UFO_CRUISE_SPEED = 1.2f;   // slow glide
+constexpr float UFO_STEER_RATE = 0.4f;   // how fast direction changes
+constexpr float UFO_DRIFT_DAMPING = 0.96f;  // floatiness
 
 // ------------------------------------------------------------
 // Tuning (VISUAL FIDELITY MODE)
@@ -662,7 +665,10 @@ static void spawn_ufo(float x, float y, float z, float size) {
     NPC& n = npcs[npc_count++];
     n.type = NPCType::UFO;
 
-    n.x = x; n.y = y; n.z = z;
+    n.x = x;
+    n.y = y + 6.0f;   // lift all UFOs up immediately
+    n.z = z;
+
     n.vx = n.vy = n.vz = 0.0f;
     n.yaw = frand(0, 6.28318f);
 
@@ -671,7 +677,7 @@ static void spawn_ufo(float x, float y, float z, float size) {
     n.target_x = frand(-40, 40);
     n.target_y = frand(4, 12);
     n.target_z = frand(-40, 40);
-    n.think_timer = frand(2.0f, 6.0f);
+    n.think_timer = frand(8.0f, 16.0f);
 }
 
 static void spawn_drone(float x, float y, float z, float size) {
@@ -703,7 +709,7 @@ static void update_npcs(float dt) {
             n.target_z = frand(-50, 50);
 
             if (n.type == NPCType::UFO)
-                n.target_y = frand(5, 14);
+                n.target_y = frand(12.0f, 20.0f);
             else
                 n.target_y = frand(1.5f, 6);
 
@@ -721,17 +727,48 @@ static void update_npcs(float dt) {
 
         float dist = std::sqrt(dx * dx + dy * dy + dz * dz) + 0.001f;
 
-        float speed = (n.type == NPCType::UFO) ? 3.5f : 5.0f;
+        if (n.type == NPCType::UFO) {
 
-        n.vx = dx / dist * speed;
-        n.vy = dy / dist * speed;
-        n.vz = dz / dist * speed;
+            // desired cruise velocity
+            float tx = dx / dist * UFO_CRUISE_SPEED;
+            float ty = dy / dist * UFO_CRUISE_SPEED;
+            float tz = dz / dist * UFO_CRUISE_SPEED;
 
-        n.x += n.vx * dt;
-        n.y += n.vy * dt;
-        n.z += n.vz * dt;
+            // smooth steering (no snapping)
+            n.vx = lerp(n.vx, tx, UFO_STEER_RATE * dt);
+            n.vy = lerp(n.vy, ty, UFO_STEER_RATE * dt);
+            n.vz = lerp(n.vz, tz, UFO_STEER_RATE * dt);
 
-        n.yaw = std::atan2(n.vz, n.vx);
+            // gentle drift
+            n.vx *= UFO_DRIFT_DAMPING;
+            n.vy *= UFO_DRIFT_DAMPING;
+            n.vz *= UFO_DRIFT_DAMPING;
+
+            // integrate
+            n.x += n.vx * dt;
+            n.y += n.vy * dt;
+            n.z += n.vz * dt;
+
+            // slow yaw alignment
+            float desired_yaw = std::atan2(n.vz, n.vx);
+            n.yaw = lerp(n.yaw, desired_yaw, dt * 0.8f);
+
+        }
+        else {
+            // drones stay responsive
+            float speed = 5.0f;
+
+            n.vx = dx / dist * speed;
+            n.vy = dy / dist * speed;
+            n.vz = dz / dist * speed;
+
+            n.x += n.vx * dt;
+            n.y += n.vy * dt;
+            n.z += n.vz * dt;
+
+            n.yaw = std::atan2(n.vz, n.vx);
+        }
+
     }
 }
 
