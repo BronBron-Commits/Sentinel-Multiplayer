@@ -71,6 +71,21 @@ static int g_fb_h = 720;
 static bool chat_active = false;
 static std::string chat_buffer;
 
+static void measure_text(
+    const std::string& s,
+    int& w,
+    int& h
+) {
+    TTF_SizeUTF8(g_chat_font, s.c_str(), &w, &h);
+}
+
+
+constexpr int CHAT_PADDING_X = 10;
+constexpr int CHAT_PADDING_Y = 6;
+constexpr int CHAT_LINE_SPACING = 4;
+constexpr int CHAT_MAX_WIDTH = 520;
+constexpr int CHAT_MARGIN = 12;
+
 // simple chat history (client-side only for now)
 static constexpr int MAX_CHAT_LINES = 6;
 static std::string chat_lines[MAX_CHAT_LINES];
@@ -185,6 +200,40 @@ static UfoNPC g_ufo = {
     0.0f     // yaw
 };
 
+struct UfoParticle {
+    float x, y, z;
+    float vx, vy, vz;
+    float life;
+};
+
+static constexpr int UFO_PARTICLE_COUNT = 128;
+static UfoParticle ufo_particles[UFO_PARTICLE_COUNT];
+
+
+
+enum class NPCType {
+    Drone,
+    UFO
+};
+
+struct NPC {
+    NPCType type;
+
+    float x, y, z;
+    float vx, vy, vz;
+
+    float yaw;
+    float size;
+
+    // AI state
+    float target_x, target_y, target_z;
+    float think_timer;
+};
+
+
+static constexpr int MAX_NPCS = 12;
+static NPC npcs[MAX_NPCS];
+static int npc_count = 0;
 
 // ------------------------------------------------------------
 static float lerp(float a, float b, float t) {
@@ -499,6 +548,192 @@ static GLuint render_text_texture(
     return tex;
 }
 
+static void draw_rounded_rect(
+    float x, float y, float w, float h, float r
+) {
+    const int SEG = 8;
+
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(x + r, y + r);
+
+    for (int i = 0; i <= SEG; ++i) {
+        float a = (float)i / SEG * 1.5708f;
+        glVertex2f(x + r - cosf(a) * r, y + r - sinf(a) * r);
+    }
+    glEnd();
+
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(x + w - r, y + r);
+    for (int i = 0; i <= SEG; ++i) {
+        float a = (float)i / SEG * 1.5708f;
+        glVertex2f(x + w - r + sinf(a) * r, y + r - cosf(a) * r);
+    }
+    glEnd();
+
+    glBegin(GL_QUADS);
+    glVertex2f(x + r, y);
+    glVertex2f(x + w - r, y);
+    glVertex2f(x + w - r, y + h);
+    glVertex2f(x + r, y + h);
+    glEnd();
+}
+
+static void spawn_ufo_particle() {
+    for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
+        if (ufo_particles[i].life <= 0.0f) {
+
+            float a = float(rand()) / RAND_MAX * 6.28318f;
+            float r = 2.6f + (float(rand()) / RAND_MAX) * 0.6f;
+
+            ufo_particles[i].x = g_ufo.x + std::cos(a) * r;
+            ufo_particles[i].z = g_ufo.z + std::sin(a) * r;
+            ufo_particles[i].y = g_ufo.y - 0.1f;
+
+            ufo_particles[i].vx = 0.0f;
+            ufo_particles[i].vy = -0.6f - (float(rand()) / RAND_MAX) * 0.4f;
+            ufo_particles[i].vz = 0.0f;
+
+            ufo_particles[i].life = 1.0f;
+            break;
+        }
+    }
+}
+
+static void update_ufo_particles(float dt) {
+    // spawn rate
+    for (int i = 0; i < 2; ++i)
+        spawn_ufo_particle();
+
+    for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
+        if (ufo_particles[i].life <= 0.0f)
+            continue;
+
+        ufo_particles[i].x += ufo_particles[i].vx * dt;
+        ufo_particles[i].y += ufo_particles[i].vy * dt;
+        ufo_particles[i].z += ufo_particles[i].vz * dt;
+
+        ufo_particles[i].life -= dt * 1.2f;
+        if (ufo_particles[i].life < 0.0f)
+            ufo_particles[i].life = 0.0f;
+    }
+}
+
+static void draw_ufo_particles() {
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glDepthMask(GL_FALSE);
+
+    glBegin(GL_QUADS);
+    for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
+        if (ufo_particles[i].life <= 0.0f)
+            continue;
+
+        float a = ufo_particles[i].life * 0.85f;
+        float s = 0.35f;
+
+        glColor4f(0.2f, 0.8f, 1.0f, a);
+
+        float x = ufo_particles[i].x;
+        float y = ufo_particles[i].y;
+        float z = ufo_particles[i].z;
+
+        glVertex3f(x - s, y, z - s);
+        glVertex3f(x + s, y, z - s);
+        glVertex3f(x + s, y, z + s);
+        glVertex3f(x - s, y, z + s);
+    }
+    glEnd();
+
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+}
+static float frand(float a, float b) {
+    return a + (b - a) * (float(rand()) / RAND_MAX);
+}
+
+
+
+
+static void spawn_ufo(float x, float y, float z, float size) {
+    if (npc_count >= MAX_NPCS) return;
+
+    NPC& n = npcs[npc_count++];
+    n.type = NPCType::UFO;
+
+    n.x = x; n.y = y; n.z = z;
+    n.vx = n.vy = n.vz = 0.0f;
+    n.yaw = frand(0, 6.28318f);
+
+    n.size = size;
+
+    n.target_x = frand(-40, 40);
+    n.target_y = frand(4, 12);
+    n.target_z = frand(-40, 40);
+    n.think_timer = frand(2.0f, 6.0f);
+}
+
+static void spawn_drone(float x, float y, float z, float size) {
+    if (npc_count >= MAX_NPCS) return;
+
+    NPC& n = npcs[npc_count++];
+    n.type = NPCType::Drone;
+
+    n.x = x; n.y = y; n.z = z;
+    n.vx = n.vy = n.vz = 0.0f;
+    n.yaw = frand(0, 6.28318f);
+
+    n.size = size;
+
+    n.target_x = frand(-30, 30);
+    n.target_y = frand(1.5f, 6.0f);
+    n.target_z = frand(-30, 30);
+    n.think_timer = frand(1.0f, 4.0f);
+}
+
+static void update_npcs(float dt) {
+    for (int i = 0; i < npc_count; ++i) {
+        NPC& n = npcs[i];
+
+        n.think_timer -= dt;
+        if (n.think_timer <= 0.0f) {
+            // pick new target
+            n.target_x = frand(-50, 50);
+            n.target_z = frand(-50, 50);
+
+            if (n.type == NPCType::UFO)
+                n.target_y = frand(5, 14);
+            else
+                n.target_y = frand(1.5f, 6);
+
+            n.think_timer = frand(2.0f, 6.0f);
+
+            if (n.type == NPCType::UFO) {
+                // spawn_ufo_particle_at(n.x, n.y, n.z);
+            }
+
+        }
+
+        float dx = n.target_x - n.x;
+        float dy = n.target_y - n.y;
+        float dz = n.target_z - n.z;
+
+        float dist = std::sqrt(dx * dx + dy * dy + dz * dz) + 0.001f;
+
+        float speed = (n.type == NPCType::UFO) ? 3.5f : 5.0f;
+
+        n.vx = dx / dist * speed;
+        n.vy = dy / dist * speed;
+        n.vz = dz / dist * speed;
+
+        n.x += n.vx * dt;
+        n.y += n.vy * dt;
+        n.z += n.vz * dt;
+
+        n.yaw = std::atan2(n.vz, n.vx);
+    }
+}
 
 
 // ------------------------------------------------------------
@@ -558,6 +793,20 @@ int main() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_NORMALIZE);
     setup_lighting();
+    // ------------------------------------------------------------
+// Spawn local NPCs (AI-only, client-side)
+// ------------------------------------------------------------
+    srand(1337); // deterministic
+
+    spawn_ufo(15.0f, 8.0f, -20.0f, 1.0f);
+    spawn_ufo(-25.0f, 12.0f, 10.0f, 1.6f);
+    spawn_ufo(5.0f, 6.0f, 30.0f, 0.8f);
+
+    spawn_drone(10.0f, 3.0f, 10.0f, 1.0f);
+    spawn_drone(-12.0f, 4.0f, -8.0f, 0.7f);
+    spawn_drone(6.0f, 5.0f, -18.0f, 1.2f);
+
+
 
     GLfloat rim_diffuse[] = { 0.4f, 0.4f, 0.4f, 1.0f };
     GLfloat rim_specular[] = { 0.6f, 0.6f, 0.6f, 1.0f };
@@ -602,15 +851,13 @@ int main() {
         Uint32 now = SDL_GetTicks();
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
+        update_npcs(dt);
+
+
 
         update_trail(dt);
-        // ---- UFO hover update ----
-        float tsec = now * 0.001f;
+        // update_ufo_particles(dt);
 
-        g_ufo.y = g_ufo.base_y +
-            std::sin(tsec * g_ufo.hover_speed) * g_ufo.hover_amp;
-
-        g_ufo.yaw += dt * 8.0f; // slow rotation
 
         if (missile.active) {
             missile.x += missile.vx * dt;
@@ -1048,23 +1295,42 @@ int main() {
         glDisable(GL_LIGHTING);
         draw_grid();
    
-        // ---- UFO NPC ----
+        // ------------------------------------------------------------
+// NPC rendering (AI-driven)
+// ------------------------------------------------------------
+        for (int i = 0; i < npc_count; ++i) {
+            const NPC& n = npcs[i];
+
+            glEnable(GL_LIGHTING);
+            glDisable(GL_COLOR_MATERIAL);
+
+            glPushMatrix();
+
+            glTranslatef(n.x, n.y, n.z);
+            glRotatef(n.yaw * 57.2958f, 0, 1, 0);
+            glScalef(n.size, n.size, n.size);
+
+            if (n.type == NPCType::UFO) {
+                set_metal_material(0.55f, 0.6f, 0.7f);
+                draw_ufo();
+            }
+            else {
+                set_metal_material(0.45f, 0.45f, 0.5f);
+                draw_drone(now * 0.001f);
+            }
+
+            glPopMatrix();
+
+            glEnable(GL_COLOR_MATERIAL);
+        }
+
+
+       
+
+
         glEnable(GL_LIGHTING);
-        glDisable(GL_COLOR_MATERIAL);
+        draw_ufo_particles();
 
-        glPushMatrix();
-        glTranslatef(g_ufo.x, g_ufo.y, g_ufo.z);
-        glRotatef(g_ufo.yaw, 0, 1, 0);
-
-        set_metal_material(0.55f, 0.6f, 0.7f);
-        draw_ufo();
-
-        glPopMatrix();
-
-        glEnable(GL_COLOR_MATERIAL);
-
-
-        glEnable(GL_LIGHTING);
         draw_trail();
         if (missile.active) {
             glPushMatrix();
