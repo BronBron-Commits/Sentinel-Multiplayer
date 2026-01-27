@@ -18,20 +18,16 @@ static inline float clampf(float v, float lo, float hi) {
 
 // ------------------------------------------------------------
 // World-space sky (yaw-only, infinite distance)
-// Assumptions:
-//  - Perspective projection already set
-//  - ModelView already reset + yaw rotation applied by caller
-//  - Depth test OFF, depth write OFF
 // ------------------------------------------------------------
 void draw_sky(float t) {
     (void)t;
 
-    const float R = 300.0f; // large enough to feel infinite
+    const float R = 300.0f;
 
     glDisable(GL_LIGHTING);
 
     // ============================================================
-    // Sky gradient dome (upper hemisphere)
+    // Sky gradient dome (darker → black zenith)
     // ============================================================
     const int LAT = 10;
     const int LON = 24;
@@ -40,7 +36,7 @@ void draw_sky(float t) {
         float v0 = float(i) / float(LAT);
         float v1 = float(i + 1) / float(LAT);
 
-        float phi0 = v0 * (3.14159f * 0.5f); // 0..pi/2
+        float phi0 = v0 * (3.14159f * 0.5f);
         float phi1 = v1 * (3.14159f * 0.5f);
 
         glBegin(GL_TRIANGLE_STRIP);
@@ -52,16 +48,17 @@ void draw_sky(float t) {
             // ---- first latitude ----
             {
                 float phi = phi0;
-
                 float y = std::cos(phi);
-                float x = std::sin(phi) * std::cos(theta);
-                float z = std::sin(phi) * std::sin(theta);
 
                 float h = clampf(y, 0.0f, 1.0f);
 
-                float r = 0.55f + h * 0.30f;
-                float g = 0.75f + h * 0.15f;
-                float b = 0.95f;
+                // DARKER gradient
+                float r = 0.08f + h * 0.18f;
+                float g = 0.12f + h * 0.22f;
+                float b = 0.22f + h * 0.35f;
+
+                float x = std::sin(phi) * std::cos(theta);
+                float z = std::sin(phi) * std::sin(theta);
 
                 glColor3f(r, g, b);
                 glVertex3f(x * R, y * R, z * R);
@@ -70,16 +67,16 @@ void draw_sky(float t) {
             // ---- second latitude ----
             {
                 float phi = phi1;
-
                 float y = std::cos(phi);
-                float x = std::sin(phi) * std::cos(theta);
-                float z = std::sin(phi) * std::sin(theta);
 
                 float h = clampf(y, 0.0f, 1.0f);
 
-                float r = 0.55f + h * 0.30f;
-                float g = 0.75f + h * 0.15f;
-                float b = 0.95f;
+                float r = 0.08f + h * 0.18f;
+                float g = 0.12f + h * 0.22f;
+                float b = 0.22f + h * 0.35f;
+
+                float x = std::sin(phi) * std::cos(theta);
+                float z = std::sin(phi) * std::sin(theta);
 
                 glColor3f(r, g, b);
                 glVertex3f(x * R, y * R, z * R);
@@ -90,20 +87,20 @@ void draw_sky(float t) {
     }
 
     // ============================================================
-    // Sun disc (directional, fixed in sky)
+    // Sun disc (slightly dimmer, warmer)
     // ============================================================
     {
-        const float sun_theta = 1.1f;  // azimuth
-        const float sun_phi = 0.55f; // elevation
+        const float sun_theta = 1.1f;
+        const float sun_phi = 0.55f;
 
         float sx = std::cos(sun_theta) * std::sin(sun_phi);
         float sy = std::cos(sun_phi);
         float sz = std::sin(sun_theta) * std::sin(sun_phi);
 
-        const float SUN_R = 18.0f;
+        const float SUN_R = 16.0f;
 
         glBegin(GL_TRIANGLE_FAN);
-        glColor3f(1.0f, 0.95f, 0.85f);
+        glColor3f(0.95f, 0.85f, 0.65f);
         glVertex3f(sx * R, sy * R, sz * R);
 
         for (int i = 0; i <= 24; ++i) {
@@ -121,11 +118,11 @@ void draw_sky(float t) {
     }
 
     // ============================================================
-    // Stars (upper hemisphere only)
+    // Stars (fade into true black)
     // ============================================================
     float night = clampf(std::sin(t * 0.05f) * 0.5f + 0.5f, 0.0f, 1.0f);
 
-    if (night > 0.6f) {
+    if (night > 0.55f) {
         glPointSize(2.0f);
         glBegin(GL_POINTS);
 
@@ -143,7 +140,11 @@ void draw_sky(float t) {
             float y = std::cos(phi);
             float z = std::sin(phi) * std::sin(theta);
 
-            glColor4f(1.0f, 1.0f, 1.0f, (night - 0.6f) * 1.4f);
+            glColor4f(
+                0.9f, 0.9f, 1.0f,
+                (night - 0.55f) * 1.6f
+            );
+
             glVertex3f(x * R, y * R, z * R);
         }
 
