@@ -45,6 +45,7 @@ static Mix_Chunk* g_drone_move_sfx = nullptr;
 static int g_drone_move_channel = -1;
 static Mix_Chunk* g_drone_move_boost_sfx = nullptr;
 static bool g_drone_boost_active = false;
+static bool pause_menu_open = false;
 
 static float frand(float a, float b);
 
@@ -1137,8 +1138,8 @@ SDL_StartTextInput();
             }
 
             // ------------------------------------------------------------
-// Chat input handling
-// ------------------------------------------------------------
+            // Chat input handling
+            // ------------------------------------------------------------
             if (e.type == SDL_KEYDOWN) {
 
                 if (e.key.keysym.sym == SDLK_RETURN ||
@@ -1159,18 +1160,26 @@ SDL_StartTextInput();
                     continue;
                 }
 
-                if (chat_active && e.key.keysym.sym == SDLK_ESCAPE) {
-                    chat_active = false;
-                    chat_buffer.clear();
-                    continue;
-                }
-
                 if (chat_active && e.key.keysym.sym == SDLK_BACKSPACE) {
                     if (!chat_buffer.empty())
                         chat_buffer.pop_back();
                     continue;
                 }
+
+                // ✅ ESC handling (single place, correct)
+                if (e.key.keysym.sym == SDLK_ESCAPE) {
+                    if (chat_active) {
+                        chat_active = false;
+                        chat_buffer.clear();
+                    }
+                    else {
+                        pause_menu_open = !pause_menu_open;
+                    }
+                    continue;
+                }
             }
+
+
 
 
             if (chat_active && e.type == SDL_TEXTINPUT) {
@@ -1200,12 +1209,13 @@ SDL_StartTextInput();
 
 
 
-        SDL_PumpEvents();
-        const Uint8* keys = SDL_GetKeyboardState(nullptr);
-        if (chat_active) {
-            // Freeze player control while typing
-            keys = nullptr;
-        }
+            SDL_PumpEvents();
+            const Uint8* keys = SDL_GetKeyboardState(nullptr);
+            if (chat_active || pause_menu_open) {
+                // Freeze player control while typing OR in pause menu
+                keys = nullptr;
+            }
+
 
 
         static bool prev_space = false;
@@ -1516,6 +1526,7 @@ SDL_StartTextInput();
             glPopMatrix();
             glMatrixMode(GL_MODELVIEW);
             glPopAttrib();
+
 
             SDL_GL_SwapWindow(win);
             continue;
@@ -1953,6 +1964,71 @@ draw_terrain(cam.pos.x, cam.pos.z);
         glMatrixMode(GL_MODELVIEW);
 
         glPopAttrib();
+        // ------------------------------------------------------------
+// Pause menu overlay (visual only)
+// ------------------------------------------------------------
+        if (pause_menu_open) {
+
+            glPushAttrib(GL_ENABLE_BIT | GL_TRANSFORM_BIT);
+
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_LIGHTING);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glMatrixMode(GL_PROJECTION);
+            glPushMatrix();
+            glLoadIdentity();
+            glOrtho(0, g_fb_w, g_fb_h, 0, -1, 1);
+
+            glMatrixMode(GL_MODELVIEW);
+            glPushMatrix();
+            glLoadIdentity();
+
+            // Dim background
+            glColor4f(0.0f, 0.0f, 0.0f, 0.65f);
+            glBegin(GL_QUADS);
+            glVertex2f(0, 0);
+            glVertex2f(g_fb_w, 0);
+            glVertex2f(g_fb_w, g_fb_h);
+            glVertex2f(0, g_fb_h);
+            glEnd();
+
+            // PAUSED text
+            int tw, th;
+            GLuint tex = render_text_texture(
+                g_title_font,
+                "PAUSED",
+                tw,
+                th
+            );
+
+            if (tex) {
+                float x = g_fb_w * 0.5f - tw * 0.5f;
+                float y = g_fb_h * 0.4f;
+
+                glEnable(GL_TEXTURE_2D);
+                glBindTexture(GL_TEXTURE_2D, tex);
+                glColor4f(1, 1, 1, 1);
+
+                glBegin(GL_QUADS);
+                glTexCoord2f(0, 0); glVertex2f(x, y);
+                glTexCoord2f(1, 0); glVertex2f(x + tw, y);
+                glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
+                glTexCoord2f(0, 1); glVertex2f(x, y + th);
+                glEnd();
+
+                glDeleteTextures(1, &tex);
+                glDisable(GL_TEXTURE_2D);
+            }
+
+            glPopMatrix();
+            glMatrixMode(GL_PROJECTION);
+            glPopMatrix();
+            glMatrixMode(GL_MODELVIEW);
+
+            glPopAttrib();
+        }
 
 
         SDL_GL_SwapWindow(win);
