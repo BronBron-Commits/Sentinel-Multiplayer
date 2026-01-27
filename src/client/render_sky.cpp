@@ -222,8 +222,8 @@ void draw_sky(float t) {
 
                     glVertex3f(x * R, y * R, z * R);
                 }
-                
-                
+
+
             }
 
             glEnd();
