@@ -1,5 +1,10 @@
 #pragma once
 #include <glad/glad.h>
+#include <cmath>
+
+/* ============================================================
+   SHADER STATE
+   ============================================================ */
 
 extern GLuint g_drone_program;
 
@@ -14,63 +19,73 @@ extern GLint uRoughness;
 extern GLint uMetallic;
 extern GLint uBrushDir;
 
-
-/* ============================
+/* ============================================================
    TUNABLE DRONE PARAMETERS
-   ============================ */
+   ============================================================ */
 
+   // body
 constexpr float BASE_HALF_X = 0.45f;
 constexpr float BASE_HALF_Y = 0.12f;
 constexpr float BASE_HALF_Z = 0.55f;
 
+// dome
 constexpr float DOME_RADIUS = 0.38f;
 constexpr float DOME_Y_OFFSET = BASE_HALF_Y;
 
+// arms
 constexpr float ARM_OFFSET = 0.75f;
 constexpr float ARM_HALF_LENGTH = 0.55f;
 constexpr float ARM_HALF_THICK = 0.05f;
 constexpr float ARM_HALF_HEIGHT = 0.05f;
 
+// rotors
 constexpr float ROTOR_OFFSET = 1.25f;
 constexpr float ROTOR_HEIGHT = 0.18f;
 constexpr float ROTOR_RADIUS = 0.30f;
-
 constexpr float ROTOR_RPM = 720.0f;
 
-/* ============================
-   LOW-LEVEL HELPERS
-   ============================ */
 
-inline void draw_box(float hx, float hy, float hz)
+
+/* ============================================================
+   LOW-LEVEL PRIMITIVES (IMMEDIATE MODE)
+   ============================================================ */
+
+inline void draw_bevel_box(float hx, float hy, float hz, float b)
 {
-    glBegin(GL_QUADS);
+    // +X / -X
+    glPushMatrix();
+    glTranslatef(hx - b, 0, 0);
+    draw_box(b, hy - b, hz - b);
+    glPopMatrix();
 
-    glNormal3f(0, 1, 0);
-    glVertex3f(-hx, hy, -hz); glVertex3f(hx, hy, -hz);
-    glVertex3f(hx, hy, hz); glVertex3f(-hx, hy, hz);
+    glPushMatrix();
+    glTranslatef(-hx + b, 0, 0);
+    draw_box(b, hy - b, hz - b);
+    glPopMatrix();
 
-    glNormal3f(0, -1, 0);
-    glVertex3f(-hx, -hy, -hz); glVertex3f(-hx, -hy, hz);
-    glVertex3f(hx, -hy, hz); glVertex3f(hx, -hy, -hz);
+    // +Y / -Y
+    glPushMatrix();
+    glTranslatef(0, hy - b, 0);
+    draw_box(hx - b, b, hz - b);
+    glPopMatrix();
 
-    glNormal3f(1, 0, 0);
-    glVertex3f(hx, -hy, -hz); glVertex3f(hx, -hy, hz);
-    glVertex3f(hx, hy, hz); glVertex3f(hx, hy, -hz);
+    glPushMatrix();
+    glTranslatef(0, -hy + b, 0);
+    draw_box(hx - b, b, hz - b);
+    glPopMatrix();
 
-    glNormal3f(-1, 0, 0);
-    glVertex3f(-hx, -hy, -hz); glVertex3f(-hx, hy, -hz);
-    glVertex3f(-hx, hy, hz); glVertex3f(-hx, -hy, hz);
+    // +Z / -Z
+    glPushMatrix();
+    glTranslatef(0, 0, hz - b);
+    draw_box(hx - b, hy - b, b);
+    glPopMatrix();
 
-    glNormal3f(0, 0, 1);
-    glVertex3f(-hx, -hy, hz); glVertex3f(-hx, hy, hz);
-    glVertex3f(hx, hy, hz); glVertex3f(hx, -hy, hz);
-
-    glNormal3f(0, 0, -1);
-    glVertex3f(-hx, -hy, -hz); glVertex3f(hx, -hy, -hz);
-    glVertex3f(hx, hy, -hz); glVertex3f(-hx, hy, -hz);
-
-    glEnd();
+    glPushMatrix();
+    glTranslatef(0, 0, -hz + b);
+    draw_box(hx - b, hy - b, b);
+    glPopMatrix();
 }
+
 
 inline void draw_half_sphere(float r)
 {
@@ -113,9 +128,48 @@ inline void draw_disk(float r)
     glEnd();
 }
 
-/* ============================
-   DRONE RENDER (SHADER-BASED)
-   ============================ */
+inline void draw_rotor_hub(float r, float h)
+{
+    constexpr int SEG = 24;
+    glBegin(GL_QUAD_STRIP);
+    for (int i = 0; i <= SEG; ++i) {
+        float a = i * 2.f * 3.1415926f / SEG;
+        float x = std::cos(a) * r;
+        float z = std::sin(a) * r;
+        glNormal3f(x, 0, z);
+        glVertex3f(x, 0, z);
+        glVertex3f(x, h, z);
+    }
+    glEnd();
+}
+
+/* ============================================================
+   ARM WITH TAPER (STACKED BOX ILLUSION)
+   ============================================================ */
+
+inline void draw_arm(bool x_axis)
+{
+    // root (thicker)
+    draw_box(
+        x_axis ? ARM_HALF_LENGTH * 0.6f : ARM_HALF_THICK * 1.2f,
+        ARM_HALF_HEIGHT * 1.2f,
+        x_axis ? ARM_HALF_THICK * 1.2f : ARM_HALF_LENGTH * 0.6f
+    );
+
+    // tip (thinner)
+    glTranslatef(x_axis ? ARM_HALF_LENGTH * 0.4f : 0.f, 0.f,
+        x_axis ? 0.f : ARM_HALF_LENGTH * 0.4f);
+
+    draw_box(
+        x_axis ? ARM_HALF_LENGTH * 0.4f : ARM_HALF_THICK,
+        ARM_HALF_HEIGHT,
+        x_axis ? ARM_HALF_THICK : ARM_HALF_LENGTH * 0.4f
+    );
+}
+
+/* ============================================================
+   DRONE RENDER
+   ============================================================ */
 
 inline void draw_drone(float time_sec,
     const float* model,
@@ -125,33 +179,41 @@ inline void draw_drone(float time_sec,
 {
     glUseProgram(g_drone_program);
 
-    // Matrices
     glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
     glUniformMatrix4fv(uView, 1, GL_FALSE, view);
     glUniformMatrix4fv(uProj, 1, GL_FALSE, proj);
-
     glUniform3fv(uCameraPos, 1, camera_pos);
 
-    // Lighting
+    // lighting
     glUniform3f(uLightDir, -0.4f, -1.0f, -0.6f);
-    glUniform3f(uLightColor, 1.0f, 1.0f, 1.0f);
+    glUniform3f(uLightColor, 1.0f, 0.96f, 0.92f);
+    glUniform3f(uBrushDir, 0.2f, 0.9f, 0.1f);
 
-    // ===== BODY (brushed aluminum) =====
+    // subtle hover
+    glPushMatrix();
+    glTranslatef(0.f, std::sin(time_sec * 2.f) * 0.02f, 0.f);
+
+    // ===== BODY CORE =====
     glUniform3f(uBaseColor, 0.72f, 0.75f, 0.78f);
     glUniform1f(uMetallic, 0.95f);
-    glUniform1f(uRoughness, 0.22f);
-    glUniform3f(uBrushDir, 1, 0, 0);
+    glUniform1f(uRoughness, 0.20f);
+    draw_box(BASE_HALF_X * 0.96f, BASE_HALF_Y * 0.9f, BASE_HALF_Z * 0.96f);
 
-    draw_box(BASE_HALF_X, BASE_HALF_Y, BASE_HALF_Z);
+    // ===== BODY BEVEL =====
+    glUniform3f(uBaseColor, 0.58f, 0.60f, 0.62f);
+    glUniform1f(uRoughness, 0.35f);
+    draw_box(BASE_HALF_X, BASE_HALF_Y * 0.55f, BASE_HALF_Z);
 
-    // ===== UNDERSIDE PANEL =====
+    // ===== UNDERSIDE =====
     glUniform3f(uBaseColor, 0.40f, 0.42f, 0.45f);
-    draw_box(BASE_HALF_X * 0.95f, BASE_HALF_Y * 0.4f, BASE_HALF_Z * 0.95f);
+    glUniform1f(uMetallic, 0.80f);
+    glUniform1f(uRoughness, 0.45f);
+    draw_box(BASE_HALF_X * 0.9f, BASE_HALF_Y * 0.35f, BASE_HALF_Z * 0.9f);
 
-    // ===== DOME (sensor glass) =====
-    glUniform3f(uBaseColor, 0.04f, 0.06f, 0.08f);
-    glUniform1f(uMetallic, 0.15f);
-    glUniform1f(uRoughness, 0.05f);
+    // ===== DOME =====
+    glUniform3f(uBaseColor, 0.02f, 0.03f, 0.05f);
+    glUniform1f(uMetallic, 0.0f);
+    glUniform1f(uRoughness, 0.03f);
 
     glPushMatrix();
     glTranslatef(0, DOME_Y_OFFSET, 0);
@@ -163,34 +225,32 @@ inline void draw_drone(float time_sec,
     glUniform1f(uMetallic, 0.85f);
     glUniform1f(uRoughness, 0.30f);
 
-    glPushMatrix(); glTranslatef(ARM_OFFSET, 0, 0);
-    draw_box(ARM_HALF_LENGTH, ARM_HALF_HEIGHT, ARM_HALF_THICK);
-    glPopMatrix();
-
-    glPushMatrix(); glTranslatef(-ARM_OFFSET, 0, 0);
-    draw_box(ARM_HALF_LENGTH, ARM_HALF_HEIGHT, ARM_HALF_THICK);
-    glPopMatrix();
-
-    glPushMatrix(); glTranslatef(0, 0, ARM_OFFSET);
-    draw_box(ARM_HALF_THICK, ARM_HALF_HEIGHT, ARM_HALF_LENGTH);
-    glPopMatrix();
-
-    glPushMatrix(); glTranslatef(0, 0, -ARM_OFFSET);
-    draw_box(ARM_HALF_THICK, ARM_HALF_HEIGHT, ARM_HALF_LENGTH);
-    glPopMatrix();
+    glPushMatrix(); glTranslatef(ARM_OFFSET, 0, 0); draw_arm(true);  glPopMatrix();
+    glPushMatrix(); glTranslatef(-ARM_OFFSET, 0, 0); draw_arm(true);  glPopMatrix();
+    glPushMatrix(); glTranslatef(0, 0, ARM_OFFSET); draw_arm(false); glPopMatrix();
+    glPushMatrix(); glTranslatef(0, 0, -ARM_OFFSET); draw_arm(false); glPopMatrix();
 
     // ===== ROTORS =====
-    glUniform3f(uBaseColor, 0.05f, 0.05f, 0.05f);
-    glUniform1f(uMetallic, 0.10f);
-    glUniform1f(uRoughness, 0.60f);
-
-    float spin = time_sec * ROTOR_RPM;
+    float spin = time_sec * ROTOR_RPM * (0.9f + 0.1f * std::sin(time_sec * 20.f));
 
     auto rotor = [&](float x, float z, bool dir) {
         glPushMatrix();
         glTranslatef(x, ROTOR_HEIGHT, z);
         glRotatef(dir ? spin : -spin, 0, 1, 0);
+
+        // hub
+        glUniform3f(uBaseColor, 0.18f, 0.18f, 0.18f);
+        glUniform1f(uMetallic, 0.60f);
+        glUniform1f(uRoughness, 0.45f);
+        draw_rotor_hub(0.06f, 0.05f);
+
+        // blade disk
+        glTranslatef(0, 0.05f, 0);
+        glUniform3f(uBaseColor, 0.05f, 0.05f, 0.05f);
+        glUniform1f(uMetallic, 0.10f);
+        glUniform1f(uRoughness, 0.65f);
         draw_disk(ROTOR_RADIUS);
+
         glPopMatrix();
         };
 
@@ -199,12 +259,14 @@ inline void draw_drone(float time_sec,
     rotor(0, ROTOR_OFFSET, true);
     rotor(0, -ROTOR_OFFSET, false);
 
+    glPopMatrix();
     glUseProgram(0);
 }
 
-// ------------------------------------------------------------
-// Backward-compat wrapper (keeps existing call sites working)
-// ------------------------------------------------------------
+/* ============================================================
+   BACKWARD-COMPAT WRAPPER
+   ============================================================ */
+
 inline void draw_drone(float time_sec)
 {
     static float identity[16] = {
@@ -213,8 +275,6 @@ inline void draw_drone(float time_sec)
         0,0,1,0,
         0,0,0,1
     };
-
     static float cam[3] = { 0,0,0 };
-
     draw_drone(time_sec, identity, identity, identity, cam);
 }
