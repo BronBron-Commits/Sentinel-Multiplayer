@@ -158,36 +158,71 @@ static TerrainZone classify_zone(float height, float slope, float dist) {
 // ============================================================
 
 static void set_zone_color(TerrainZone zone, float height, float slope, float wx, float wz) {
+
     float h = std::clamp(height / HEIGHT_GAIN, 0.0f, 1.0f);
+
+    // Ambient occlusion from slope
     float ao = std::clamp(1.0f - slope * 1.4f, 0.65f, 1.0f);
-    float d = (noise(wx * 0.25f, wz * 0.25f) - 0.5f) * 0.12f;
+
+    // Multi-scale color breakup
+    float macro = noise(wx * 0.03f, wz * 0.03f) - 0.5f;
+    float micro = noise(wx * 0.80f, wz * 0.80f) - 0.5f;
+    float grain = noise(wx * 3.50f, wz * 3.50f) - 0.5f;
+
+    macro *= 0.18f;
+    micro *= 0.06f;
+    grain *= 0.04f;
+
+    // Elevation effects
+    float moisture = std::clamp(1.0f - h, 0.0f, 1.0f);
+    float exposure = std::clamp(h, 0.0f, 1.0f);
+
+    // Slope streaking (erosion illusion)
+    float streak = (noise(wz * 0.15f, wx * 0.02f) - 0.5f) * slope * 0.35f;
 
     float r, g, b;
 
     switch (zone) {
     case TerrainZone::Grass:
-        r = 0.30f + 0.22f * h;
-        g = 0.62f + 0.18f * h;
-        b = 0.32f;
+        r = 0.28f + 0.22f * h - exposure * 0.05f;
+        g = 0.60f + 0.25f * h + moisture * 0.06f;
+        b = 0.30f - exposure * 0.04f;
         break;
+
     case TerrainZone::Dirt:
-        r = 0.50f + 0.18f * h;
-        g = 0.40f + 0.08f * h;
-        b = 0.28f;
+        r = 0.48f + 0.20f * h;
+        g = 0.38f + 0.10f * h;
+        b = 0.26f;
         break;
-    default:
-        r = 0.60f + 0.25f * h;
-        g = 0.60f + 0.25f * h;
-        b = 0.65f + 0.20f * h;
+
+    default: // Rock
+        r = 0.58f + 0.28f * h;
+        g = 0.58f + 0.28f * h;
+        b = 0.64f + 0.22f * h;
         break;
     }
 
+    // Pebble speckling for dirt & rock
+    if (zone != TerrainZone::Grass) {
+        float speck = noise(wx * 4.0f, wz * 4.0f);
+        if (speck > 0.72f) {
+            r += 0.12f;
+            g += 0.10f;
+            b += 0.08f;
+        }
+    }
+
+    r += macro + micro + grain + streak;
+    g += macro + micro + grain + streak;
+    b += macro + micro + grain + streak;
+
     glColor3f(
-        (r + d) * ao,
-        (g + d) * ao,
-        (b + d) * ao
+        r * ao,
+        g * ao,
+        b * ao
     );
 }
+
 
 // ============================================================
 // Grass rendering (SAFE + FAST)
@@ -243,6 +278,20 @@ static void draw_grass(float cam_x, float cam_z, float time) {
             float nx, ny, nz;
             terrain_normal(wx, wz, nx, ny, nz);
 
+            // Micro-normal detail (fake normal map)
+            float detail = noise(wx * 1.5f, wz * 1.5f) - 0.5f;
+            nx += detail * 0.25f;
+            nz += detail * 0.25f;
+
+            // Renormalize
+            float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+            if (len > 0.0001f) {
+                nx /= len;
+                ny /= len;
+                nz /= len;
+            }
+
+
             float slope_real = terrain_slope(ny);
             float dist_path = path_distance(wx, wz);
 
@@ -281,7 +330,14 @@ static void draw_grass(float cam_x, float cam_z, float time) {
                 float h = GRASS_HEIGHT * (0.6f + hash(x + i * 7, z + i * 11));
 
                 float tint = 0.85f + hash(x + i * 5, z + i * 9) * 0.3f;
-                glColor3f(0.32f * tint, 0.68f * tint, 0.32f * tint);
+                float ground_tint = (noise(px * 0.25f, pz * 0.25f) - 0.5f) * 0.10f;
+
+                glColor3f(
+                    (0.32f + ground_tint) * tint,
+                    (0.68f + ground_tint) * tint,
+                    (0.32f) * tint
+                );
+
 
                 glBegin(GL_QUADS);
 
@@ -335,6 +391,88 @@ static void draw_grass(float cam_x, float cam_z, float time) {
 // ============================================================
 // Render
 // ============================================================
+
+static void draw_tree(float x, float z, float time) {
+
+    // Keep trees away from path
+    if (path_distance(x, z) < 4.5f)
+        return;
+
+    float y = height_at(x, z);
+
+    float nx, ny, nz;
+    terrain_normal(x, z, nx, ny, nz);
+
+    // Reject steep slopes (trees don't grow on cliffs)
+    if (ny < 0.75f)
+        return;
+
+
+    // ------------------------------
+    // Trunk
+    // ------------------------------
+    const float trunk_h = 4.5f;
+    const float trunk_r = 0.22f;
+
+    glColor3f(0.42f, 0.30f, 0.18f);
+
+    glBegin(GL_QUAD_STRIP);
+    for (int i = 0; i <= 12; ++i) {
+        float a = (float)i / 12.0f * 6.28318f;
+        float ca = std::cos(a);
+        float sa = std::sin(a);
+
+        glNormal3f(ca, 0.0f, sa);
+        glVertex3f(x + ca * trunk_r, y, z + sa * trunk_r);
+        glVertex3f(x + ca * trunk_r * 0.85f, y + trunk_h, z + sa * trunk_r * 0.85f);
+    }
+    glEnd();
+
+    // ------------------------------
+    // Canopy (cheap layered leaves)
+    // ------------------------------
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    const int layers = 4;
+    const float base_r = 2.2f;
+
+    for (int i = 0; i < layers; ++i) {
+
+        float h = y + trunk_h + i * 0.9f;
+        float r = base_r * (1.0f - i * 0.18f);
+
+        float sway =
+            std::sin(time * 0.6f + x * 0.1f + z * 0.1f) * 0.08f * (i + 1);
+
+        float tint = 0.85f + 0.05f * i;
+
+        glColor4f(
+            0.22f * tint,
+            0.55f * tint,
+            0.24f * tint,
+            0.85f
+        );
+
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex3f(x + sway, h, z);
+
+        for (int j = 0; j <= 12; ++j) {
+            float a = (float)j / 12.0f * 6.28318f;
+            glVertex3f(
+                x + std::cos(a) * r + sway,
+                h,
+                z + std::sin(a) * r
+            );
+        }
+        glEnd();
+    }
+
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+}
+
 
 void draw_terrain(float cam_x, float cam_z) {
 
@@ -397,6 +535,7 @@ void draw_terrain(float cam_x, float cam_z) {
                 TerrainZone zone = classify_zone(wy, slope, dist);
 
                 set_zone_color(zone, wy, slope, wx, wz);
+
                 glNormal3f(nx, ny, nz);
                 glVertex3f(wx, wy, wz);
             }
@@ -404,6 +543,18 @@ void draw_terrain(float cam_x, float cam_z) {
 
         glEnd();
     }
+
+    // -------- TREE PASS (TEST) --------
+    {
+        float time = SDL_GetTicks() * 0.001f;
+
+        // One guaranteed visible tree
+        draw_tree(12.0f, -6.0f, time);
+
+        // A second for depth
+        draw_tree(-18.0f, 14.0f, time);
+    }
+
 
     // -------- GRASS PASS --------
     draw_grass(cam_x, cam_z, SDL_GetTicks() * 0.001f);
