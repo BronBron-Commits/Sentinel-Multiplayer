@@ -64,7 +64,9 @@ static void fix_working_directory()
 struct Camera;
 
 
+static bool prev_space = false;
 
+static bool boost_active = false;
 
 
 static void get_billboard_axes(
@@ -118,11 +120,12 @@ constexpr float UFO_DRIFT_DAMPING = 0.96f;  // floatiness
 // ------------------------------------------------------------
 constexpr float MOVE_SPEED     = 9.0f;
 constexpr float STRAFE_SPEED   = 8.0f;
-constexpr float VERTICAL_SPEED = 6.0f;
-constexpr float YAW_SPEED      = 1.8f;
+
 
 constexpr float CAM_BACK = 8.0f;
 constexpr float CAM_UP   = 4.5f;
+static float camera_yaw = 0.0f;
+static float camera_pitch = 0.0f;
 
 
 
@@ -547,6 +550,8 @@ static float lerp_angle(float a, float b, float t)
 // ------------------------------------------------------------
 int main()
 {
+
+
     fix_working_directory();   // ← FIRST LINE, no exceptions
 
     setbuf(stdout, nullptr);
@@ -598,12 +603,20 @@ int main()
     );
 
 
+    SDL_SetRelativeMouseMode(SDL_FALSE);
+    SDL_ShowCursor(SDL_ENABLE);
+    SDL_StartTextInput();
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
+
     if (!ctx) {
         printf("SDL_GL_CreateContext failed\n");
         return 1;
     }
+
+
+
+
 
 if (!gladLoadGL()) {
     printf("gladLoadGL failed\n");
@@ -614,7 +627,7 @@ if (!gladLoadGL()) {
 SDL_GL_GetDrawableSize(win, &g_fb_w, &g_fb_h);
 glViewport(0, 0, g_fb_w, g_fb_h);
 
-SDL_StartTextInput();
+
 
     glClearColor(0.05f, 0.07f, 0.10f, 1.0f);
 
@@ -669,7 +682,9 @@ SDL_StartTextInput();
 
     float px = 0.0f, py = 1.5f, pz = 0.0f;
     float drone_yaw = 0.0f;
-    float camera_yaw = 0.0f;
+    float drone_pitch = 0.0f;
+
+
 
 
     Camera cam{};
@@ -682,7 +697,70 @@ SDL_StartTextInput();
     bool in_name_entry = true;
 
     while (running) {
+
+        // ===============================
+        // SDL EVENT PUMP (REQUIRED)
+        // ===============================
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+
+            if (e.type == SDL_QUIT) {
+                running = false;
+                continue;
+            }
+
+            // --------------------------------------------------
+            // NAME ENTRY INPUT (BLOCK GAME INPUT)
+            // --------------------------------------------------
+            if (in_name_entry) {
+
+                if (e.type == SDL_TEXTINPUT) {
+                    name_buffer += e.text.text;
+                }
+
+                if (e.type == SDL_KEYDOWN) {
+
+                    if (e.key.keysym.sym == SDLK_BACKSPACE) {
+                        if (!name_buffer.empty())
+                            name_buffer.pop_back();
+                    }
+
+                    if (e.key.keysym.sym == SDLK_RETURN ||
+                        e.key.keysym.sym == SDLK_KP_ENTER) {
+
+                        if (!name_buffer.empty()) {
+                            player_name = name_buffer;
+                            name_confirmed = true;
+                            in_name_entry = false;
+
+                            SDL_StopTextInput();
+                            SDL_SetRelativeMouseMode(SDL_TRUE);
+                            SDL_ShowCursor(SDL_DISABLE);
+                        }
+                    }
+
+                    if (e.key.keysym.sym == SDLK_ESCAPE) {
+                        name_buffer.clear();
+                    }
+                }
+
+                continue; // do NOT fall through to game input
+            }
+
+            // --------------------------------------------------
+            // GAME INPUT (AFTER NAME ENTRY)
+            // --------------------------------------------------
+            if (e.type == SDL_MOUSEMOTION) {
+                controls_on_mouse_motion(
+                    (float)e.motion.xrel,
+                    (float)e.motion.yrel
+                );
+            }
+        }
+
+
         Uint32 now = SDL_GetTicks();
+
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
         npc_update(dt);
@@ -693,124 +771,37 @@ SDL_StartTextInput();
 
 
 
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
 
-            // ------------------------------------------------------------
-// Name entry screen input
-// ------------------------------------------------------------
-            if (in_name_entry) {
-
-                if (e.type == SDL_KEYDOWN) {
-
-                    if (e.key.keysym.sym == SDLK_RETURN ||
-                        e.key.keysym.sym == SDLK_KP_ENTER) {
-
-                        if (!name_buffer.empty()) {
-                            player_name = name_buffer;
-                            name_confirmed = true;
-                            in_name_entry = false;
-                            name_buffer.clear();
-                        }
-                        continue;
-                    }
-
-                    if (e.key.keysym.sym == SDLK_BACKSPACE) {
-                        if (!name_buffer.empty())
-                            name_buffer.pop_back();
-                        continue;
-                    }
-
-                    if (e.key.keysym.sym == SDLK_ESCAPE) {
-                        name_buffer.clear();
-                        continue;
-                    }
-                }
-
-                if (e.type == SDL_TEXTINPUT) {
-                    if (name_buffer.size() < 16)   // hard limit
-                        name_buffer += e.text.text;
-                    continue;
-                }
-
-                // IMPORTANT: swallow all other events
-                continue;
-            }
-
-
-            if (e.type == SDL_QUIT) {
-                running = false;
-            }
-
-            // ------------------------------------------------------------
-// Chat input handling
-// ------------------------------------------------------------
-            if (e.type == SDL_KEYDOWN) {
-
-                if (e.key.keysym.sym == SDLK_RETURN ||
-                    e.key.keysym.sym == SDLK_KP_ENTER) {
-
-                    if (chat_active && !chat_buffer.empty()) {
-                        ChatMessage msg{};
-                        msg.player_id = local_player_id;
-                        strncpy(msg.name, player_name.c_str(), MAX_NAME_LEN - 1);
-                        msg.name[MAX_NAME_LEN - 1] = '\0';
-
-                        strncpy(msg.text, chat_buffer.c_str(), MAX_CHAT_TEXT - 1);
-                        net_send_raw_to(&msg, sizeof(msg), server);
-                    }
-
-                    chat_active = !chat_active;
-                    chat_buffer.clear();
-                    continue;
-                }
-
-                if (chat_active && e.key.keysym.sym == SDLK_ESCAPE) {
-                    chat_active = false;
-                    chat_buffer.clear();
-                    continue;
-                }
-
-                if (chat_active && e.key.keysym.sym == SDLK_BACKSPACE) {
-                    if (!chat_buffer.empty())
-                        chat_buffer.pop_back();
-                    continue;
-                }
-            }
-
-
-            if (chat_active && e.type == SDL_TEXTINPUT) {
-                chat_buffer += e.text.text;
-                continue;
-            }
-
-
-            // ----- WINDOW RESIZE / FULLSCREEN -----
-            if (e.type == SDL_WINDOWEVENT) {
-                if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
-                    e.window.event == SDL_WINDOWEVENT_RESIZED) {
-
-                    SDL_GL_GetDrawableSize(win, &g_fb_w, &g_fb_h);
-                    glViewport(0, 0, g_fb_w, g_fb_h);
-                }
-            }
-
-            // ----- MOUSE WHEEL (CAMERA ZOOM) -----
-            if (e.type == SDL_MOUSEWHEEL) {
-                cam_distance -= e.wheel.y * CAM_ZOOM_SPEED;
-
-                if (cam_distance < CAM_MIN) cam_distance = CAM_MIN;
-                if (cam_distance > CAM_MAX) cam_distance = CAM_MAX;
-            }
-        }
-                
-        controls_update(chat_active);
+        controls_update();
         const ControlState& ctl = controls_get();
+
+
+        constexpr float MOUSE_SENS = 0.0025f;
+
+        camera_yaw += ctl.look_dx * MOUSE_SENS;
+        camera_pitch -= ctl.look_dy * MOUSE_SENS;
+
+
+        camera_pitch = std::clamp(camera_pitch, -1.2f, 1.2f);
+
+        controls_end_frame(); // clears look_dx / look_dy
+
+        // Clamp pitch so we don’t flip
+        drone_pitch = std::clamp(drone_pitch, -1.2f, 1.2f);
+
+        // clamp pitch (no flipping)
+        if (drone_pitch > 1.2f) drone_pitch = 1.2f;
+        if (drone_pitch < -1.2f) drone_pitch = -1.2f;
+
+
+        drone_yaw = camera_yaw;
+
+
         float forward = ctl.forward;
         float strafe = ctl.strafe;
-        float vertical = ctl.vertical;
-        float turn = ctl.turn;
-        bool  boost_active = ctl.boost;
+
+        bool fire = ctl.fire;
+        boost_active = ctl.boost;
 
         combat_fx_handle_fire(
             ctl.fire,
@@ -824,15 +815,15 @@ SDL_StartTextInput();
 
         bool drone_moving =
             std::fabs(forward) > 0.01f ||
-            std::fabs(strafe) > 0.01f ||
-            std::fabs(vertical) > 0.01f;
+            std::fabs(strafe) > 0.01f;
+
 
         audio_on_drone_move(drone_moving, boost_active);
 
 
 
-        drone_yaw += turn * YAW_SPEED * dt;
-        camera_yaw = drone_yaw;
+
+
 
         float cy = std::cos(drone_yaw);
         float sy = std::sin(drone_yaw);
@@ -846,8 +837,7 @@ SDL_StartTextInput();
         pz += (sy * forward * MOVE_SPEED * speed_mul +
             cy * strafe * STRAFE_SPEED * speed_mul) * dt;
 
-        py += vertical * VERTICAL_SPEED * speed_mul * dt;
-
+        py += ctl.vertical * MOVE_SPEED * speed_mul * dt;
 
         // ---- Rotor trails (4x) ----
         const float rotor_radius = 0.55f;
@@ -903,16 +893,28 @@ SDL_StartTextInput();
             net_send_raw_to(&out, sizeof(out), server);
         }
 
-        cam.target = { px, py, pz };
+        // -------- CAMERA (USE camera_yaw / camera_pitch) --------
 
-        float cam_cy = std::cos(camera_yaw);
-        float cam_sy = std::sin(camera_yaw);
+        // Forward vector from mouse look
+        float fwd_x = std::cos(camera_yaw) * std::cos(camera_pitch);
+        float fwd_y = std::sin(camera_pitch);
+        float fwd_z = std::sin(camera_yaw) * std::cos(camera_pitch);
 
-        cam.pos = {
-            px - cam_cy * cam_distance,
-            py + CAM_UP,
-            pz - cam_sy * cam_distance
+        // Camera target (what we look at)
+        cam.target = {
+            px + fwd_x,
+            py + fwd_y,
+            pz + fwd_z
         };
+
+        // Camera position (orbit behind drone)
+        cam.pos = {
+            px - std::cos(camera_yaw) * cam_distance,
+            py + CAM_UP,
+            pz - std::sin(camera_yaw) * cam_distance
+        };
+
+
 
 
 
@@ -1100,7 +1102,7 @@ combat_fx_render(drone_yaw);
 
         bool local_idle = std::fabs(forward) < 0.01f &&
             std::fabs(strafe) < 0.01f &&
-            std::fabs(vertical) < 0.01f &&
+
             !boost_active;
 
         IdlePose idle{};
@@ -1352,7 +1354,7 @@ combat_fx_render(drone_yaw);
     TTF_Quit();
 
     net_shutdown();
-    controls_shutdown();
+
 
     return 0;
 

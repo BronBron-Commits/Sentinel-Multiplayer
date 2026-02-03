@@ -62,6 +62,7 @@ add_executable(client
     src/client/render/render_drone_shader.cpp
     src/client/render/render_sky.cpp
     src/client/render/render_terrain.cpp
+    src/client/input/control_system.cpp
 
     src/client/audio/audio_system.cpp
     src/client/core/camera_helpers.cpp

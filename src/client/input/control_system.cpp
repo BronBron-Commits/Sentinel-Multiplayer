@@ -1,49 +1,50 @@
 #include "client/input/control_system.hpp"
 #include <SDL.h>
+#include <cstring>
 
 // ------------------------------------------------------------
-// Internal state
+// Global control state
 // ------------------------------------------------------------
-static ControlState g_state{};
-static bool g_prev_fire = false;
+static ControlState g_state;
 
 // ------------------------------------------------------------
-void controls_init() {
-    g_state = {};
-    g_prev_fire = false;
+// Init
+// ------------------------------------------------------------
+void controls_init()
+{
+    std::memset(&g_state, 0, sizeof(g_state));
 }
 
 // ------------------------------------------------------------
-void controls_update(bool chat_active) {
-    SDL_PumpEvents();
-
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
-    if (chat_active) {
-        keys = nullptr; // disable controls while typing
-    }
-
-    ControlState s{};
-
-    if (keys) {
-        if (keys[SDL_SCANCODE_UP])    s.forward += 1;
-        if (keys[SDL_SCANCODE_DOWN])  s.forward -= 1;
-        if (keys[SDL_SCANCODE_LEFT])  s.strafe -= 1;
-        if (keys[SDL_SCANCODE_RIGHT]) s.strafe += 1;
-        if (keys[SDL_SCANCODE_W])     s.vertical += 1;
-        if (keys[SDL_SCANCODE_S])     s.vertical -= 1;
-        if (keys[SDL_SCANCODE_A])     s.turn += 1;
-        if (keys[SDL_SCANCODE_D])     s.turn -= 1;
-
-        s.fire = keys[SDL_SCANCODE_SPACE];
-    }
-
-    s.fire_edge = s.fire && !g_prev_fire;
-    g_prev_fire = s.fire;
-
-    g_state = s;
+// Keyboard state (movement NOT used for mouse-look test)
+// ------------------------------------------------------------
+void controls_update(bool /*ui_blocked*/)
+{
+    // Intentionally empty for now
 }
 
 // ------------------------------------------------------------
-const ControlState& controls_get() {
+// Mouse motion (called from SDL_PollEvent loop)
+// ------------------------------------------------------------
+void controls_on_mouse_motion(float dx, float dy)
+{
+    g_state.look_dx += dx;
+    g_state.look_dy += dy;
+}
+
+// ------------------------------------------------------------
+// End of frame — clear deltas
+// ------------------------------------------------------------
+void controls_end_frame()
+{
+    g_state.look_dx = 0.0f;
+    g_state.look_dy = 0.0f;
+}
+
+// ------------------------------------------------------------
+// Access
+// ------------------------------------------------------------
+const ControlState& controls_get()
+{
     return g_state;
 }
