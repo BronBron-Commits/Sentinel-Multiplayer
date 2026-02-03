@@ -3,3 +3,7 @@ external/
 build-win/
 SDL2.dll
 vcpkg_installed/build-release/
+build-client/ 
+build-release/ 
+vcpkg_installed/ 
+cmake/ 
