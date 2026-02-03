@@ -29,6 +29,8 @@
 #include "client/render_drone_shader.hpp"
 #include "client/world/npc_system.hpp"
 
+#include "client/input/control_system.hpp"
+
 #include "client/camera.hpp"
 #include "client/render_sky.hpp"
 #include "client/render/render_drone_mesh.hpp"
@@ -61,7 +63,7 @@ static void fix_working_directory()
 // ------------------------------------------------------------
 struct Camera;
 
-static bool prev_space = false;
+
 
 
 
@@ -100,7 +102,7 @@ static void get_billboard_axes(
 // ------------------------------------------------------------
 // Forward declarations (required by C++)
 // ------------------------------------------------------------
-struct Camera;
+
 
 static float frand(float a, float b);
 
@@ -273,7 +275,7 @@ struct TrailParticle {
 static constexpr int MAX_TRAIL = 256;
 static TrailParticle trail[MAX_TRAIL];
 static int trail_head = 0;
-static bool boost_active = false;
+
 
 
 static void set_metal_material(float r, float g, float b) {
@@ -622,6 +624,7 @@ SDL_StartTextInput();
     init_drone_shader();
     init_drone_mesh();
     combat_fx_init();
+    controls_init();
 
     SDL_GL_SetSwapInterval(1);
 
@@ -801,43 +804,23 @@ SDL_StartTextInput();
             }
         }
                 
-                // 👇 ADD THIS BLOCK
-                SDL_PumpEvents();
-                const Uint8* keys = SDL_GetKeyboardState(nullptr);
-
-                if (chat_active) {
-                    keys = nullptr; // disable movement while typing
-                }
-
-
-        bool space = keys && keys[SDL_SCANCODE_SPACE];
+        controls_update(chat_active);
+        const ControlState& ctl = controls_get();
+        float forward = ctl.forward;
+        float strafe = ctl.strafe;
+        float vertical = ctl.vertical;
+        float turn = ctl.turn;
+        bool  boost_active = ctl.boost;
 
         combat_fx_handle_fire(
-            space,
+            ctl.fire,
             prev_space,
             px, py, pz,
             drone_yaw
         );
 
-        prev_space = space;
+        prev_space = ctl.fire;
 
-
-
-
-
-        float forward = 0, strafe = 0, vertical = 0, turn = 0;
-
-
-
-
-        if (keys && keys[SDL_SCANCODE_UP])    forward += 1;
-        if (keys && keys[SDL_SCANCODE_DOWN])  forward -= 1;
-        if (keys && keys[SDL_SCANCODE_LEFT])  strafe -= 1;
-        if (keys && keys[SDL_SCANCODE_RIGHT]) strafe += 1;
-        if (keys && keys[SDL_SCANCODE_W])     vertical += 1;
-        if (keys && keys[SDL_SCANCODE_S])     vertical -= 1;
-        if (keys && keys[SDL_SCANCODE_A])     turn += 1;
-        if (keys && keys[SDL_SCANCODE_D])     turn -= 1;
 
         bool drone_moving =
             std::fabs(forward) > 0.01f ||
@@ -1369,6 +1352,8 @@ combat_fx_render(drone_yaw);
     TTF_Quit();
 
     net_shutdown();
+    controls_shutdown();
+
     return 0;
 
 }
