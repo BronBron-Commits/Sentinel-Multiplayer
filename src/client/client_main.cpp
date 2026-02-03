@@ -29,12 +29,14 @@
 
 #include "client/camera.hpp"
 #include "client/render_sky.hpp"
-#include "client/render_drone_mesh.hpp"
+#include "render/render_drone_mesh.hpp"
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
 #include "sentinel/net/protocol/snapshot.hpp"
 #include "sentinel/net/protocol/chat.hpp"
+
+#include "util/math_util.hpp"
 
 // ------------------------------------------------------------
 // Forward declarations (required by C++)
@@ -46,7 +48,7 @@ static int g_drone_move_channel = -1;
 static Mix_Chunk* g_drone_move_boost_sfx = nullptr;
 static bool g_drone_boost_active = false;
 
-static float frand(float a, float b);
+
 
 static void get_billboard_axes(
     const Camera& cam,
@@ -304,16 +306,7 @@ static constexpr int MAX_NPCS = 12;
 static NPC npcs[MAX_NPCS];
 static int npc_count = 0;
 
-// ------------------------------------------------------------
-static float lerp(float a, float b, float t) {
-    return a + (b - a) * t;
-}
 
-static float clamp01(float v) {
-    if (v < 0.0f) return 0.0f;
-    if (v > 1.0f) return 1.0f;
-    return v;
-}
 
 // ------------------------------------------------------------
 static void setup_lighting() {
