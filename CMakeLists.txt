@@ -1,10 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 
-# ============================================================
-# REQUIRED: Enable vcpkg MANIFEST MODE
-# ============================================================
-set(VCPKG_FEATURE_FLAGS "manifests")
-
 project(sentinel_multiplayer LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -36,7 +31,7 @@ else()
 endif()
 
 # ============================================================
-# GLAD (OpenGL loader)
+# GLAD
 # ============================================================
 
 add_library(glad STATIC
@@ -48,7 +43,7 @@ target_include_directories(glad PUBLIC
 )
 
 # ============================================================
-# SDL2 STACK (vcpkg CONFIG MODE — CORRECT)
+# SDL2 (vcpkg CONFIG mode)
 # ============================================================
 
 find_package(SDL2 CONFIG REQUIRED)
@@ -56,7 +51,7 @@ find_package(SDL2_ttf CONFIG REQUIRED)
 find_package(SDL2_mixer CONFIG REQUIRED)
 
 # ============================================================
-# CLIENT
+# CLIENT EXECUTABLE
 # ============================================================
 
 add_executable(client
@@ -85,16 +80,18 @@ target_include_directories(client PRIVATE
 target_link_libraries(client PRIVATE
     sentinel_net
     glad
+
     SDL2::SDL2
     SDL2::SDL2main
     SDL2_ttf::SDL2_ttf
     SDL2_mixer::SDL2_mixer
+
     opengl32
     glu32
 )
 
 # ============================================================
-# POST-BUILD: COPY DLLs (WINDOWS)
+# POST-BUILD: COPY RUNTIME DLLs (Windows)
 # ============================================================
 
 if (WIN32)

@@ -1,6 +1,8 @@
 ﻿#define SDL_MAIN_HANDLED
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include <filesystem>
+
 #include <windows.h>
 
 #include <winsock2.h>
@@ -39,6 +41,19 @@
 #include "sentinel/net/protocol/chat.hpp"
 
 #include "util/math_util.hpp"
+
+
+// ------------------------------------------------------------
+// Fix working directory so assets load when double-clicked
+// ------------------------------------------------------------
+static void fix_working_directory()
+{
+    char exePath[MAX_PATH];
+    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+
+    std::filesystem::path path(exePath);
+    std::filesystem::current_path(path.parent_path());
+}
 
 // ------------------------------------------------------------
 // Forward declarations (required by C++)
@@ -645,14 +660,33 @@ static void draw_unit_cube()
 
 
 // ------------------------------------------------------------
-int main() {
+int main()
+{
+    fix_working_directory();   // ← FIRST LINE, no exceptions
+
     setbuf(stdout, nullptr);
 
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
+
+
+    // ------------------------------------------------------------
+// SDL_mixer initialization (REQUIRED)
+// ------------------------------------------------------------
+    int mix_flags = MIX_INIT_OGG | MIX_INIT_MP3;
+    int mix_initted = Mix_Init(mix_flags);
+
+    if ((mix_initted & mix_flags) != mix_flags) {
+        printf("[audio] Mix_Init failed: %s\n", Mix_GetError());
+    }
+
     if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
         printf("[audio] Mix_OpenAudio failed: %s\n", Mix_GetError());
-        return 1;
     }
+    else {
+        printf("[audio] Audio device opened\n");
+    }
+
+
 
     Mix_AllocateChannels(16);
 
