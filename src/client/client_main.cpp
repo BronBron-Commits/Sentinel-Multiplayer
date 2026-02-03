@@ -33,6 +33,7 @@
 #include "client/render_sky.hpp"
 #include "client/render/render_drone_mesh.hpp"
 #include "client/audio/audio_system.hpp"
+#include "client/vfx/combat_fx.hpp"
 
 
 #include "sentinel/net/net_api.hpp"
@@ -60,6 +61,7 @@ static void fix_working_directory()
 // ------------------------------------------------------------
 struct Camera;
 
+static bool prev_space = false;
 
 
 
@@ -120,10 +122,7 @@ constexpr float YAW_SPEED      = 1.8f;
 constexpr float CAM_BACK = 8.0f;
 constexpr float CAM_UP   = 4.5f;
 
-constexpr float MISSILE_SPEED = 28.0f;
-constexpr float MISSILE_LIFE = 4.0f;   // seconds
-constexpr float EXPLOSION_MAX_RADIUS = 6.0f;
-constexpr float EXPLOSION_DURATION = 0.6f;
+
 
 // ---- Camera zoom (mouse wheel) ----
 static float cam_distance = CAM_BACK;
@@ -238,22 +237,6 @@ static IdlePose compute_idle_pose(uint32_t player_id, double t) {
     return p;
 }
 
-struct Missile {
-    bool active = false;
-    float x, y, z;
-    float vx, vy, vz;
-};
-
-static Missile missile;
-
-struct Explosion {
-    bool active = false;
-    float x, y, z;
-    float radius;
-    float time;
-};
-
-static Explosion explosion;
 
 
 
@@ -304,16 +287,6 @@ static void set_metal_material(float r, float g, float b) {
     glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 96.0f);
 }
 
-static void spawn_trail(float x, float y, float z) {
-    TrailParticle& p = trail[trail_head];
-    trail_head = (trail_head + 1) % MAX_TRAIL;
-
-    p.x = x;
-    p.y = y;
-    p.z = z;
-    p.life = boost_active ? 0.7f : 0.8f;
-
-}
 
 static void update_trail(float dt) {
     for (int i = 0; i < MAX_TRAIL; ++i) {
@@ -325,94 +298,9 @@ static void update_trail(float dt) {
     }
 }
 
-static void draw_trail() {
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive glow
-    glDepthMask(GL_FALSE);
 
-    glBegin(GL_QUADS);
-    for (int i = 0; i < MAX_TRAIL; ++i) {
-        if (trail[i].life <= 0.0f)
-            continue;
 
-        float a = trail[i].life * 0.6f;
-        float s = 0.08f;
 
-        if (boost_active)
-            glColor4f(1.0f, 0.25f, 0.25f, a);   // red boost
-        else
-            glColor4f(0.6f, 0.8f, 1.0f, a);     // normal
-
-        glVertex3f(trail[i].x - s, trail[i].y, trail[i].z - s);
-        glVertex3f(trail[i].x + s, trail[i].y, trail[i].z - s);
-        glVertex3f(trail[i].x + s, trail[i].y, trail[i].z + s);
-        glVertex3f(trail[i].x - s, trail[i].y, trail[i].z + s);
-    }
-    glEnd();
-
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
-}
-
-static void draw_missile() {
-    glDisable(GL_LIGHTING);
-    glColor3f(1.0f, 0.7f, 0.2f);
-
-    glBegin(GL_LINES);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glVertex3f(-0.8f, 0.0f, 0.0f);
-    glEnd();
-
-    glEnable(GL_LIGHTING);
-}
-
-static void draw_explosion_sphere(float radius, float alpha) {
-    const int LAT = 10;
-    const int LON = 14;
-
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-    for (int i = 0; i < LAT; ++i) {
-        float t0 = float(i) / LAT;
-        float t1 = float(i + 1) / LAT;
-
-        float phi0 = (t0 - 0.5f) * 3.14159f;
-        float phi1 = (t1 - 0.5f) * 3.14159f;
-
-        glBegin(GL_TRIANGLE_STRIP);
-        for (int j = 0; j <= LON; ++j) {
-            float u = float(j) / LON;
-            float theta = u * 6.28318f;
-
-            for (float phi : {phi0, phi1}) {
-                float x = std::cos(phi) * std::cos(theta);
-                float y = std::sin(phi);
-                float z = std::cos(phi) * std::sin(theta);
-
-                glColor4f(
-                    1.0f,
-                    0.6f - y * 0.3f,
-                    0.2f,
-                    alpha * (1.0f - t0)
-                );
-
-                glVertex3f(
-                    x * radius,
-                    y * radius,
-                    z * radius
-                );
-            }
-        }
-        glEnd();
-    }
-
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
-}
 
 static void draw_ufo()
 {
@@ -647,6 +535,11 @@ static void draw_unit_cube()
     glEnd();
 }
 
+static float lerp_angle(float a, float b, float t)
+{
+    float diff = std::fmod(b - a + 3.14159265f, 6.2831853f) - 3.14159265f;
+    return a + diff * t;
+}
 
 
 // ------------------------------------------------------------
@@ -728,6 +621,7 @@ SDL_StartTextInput();
 
     init_drone_shader();
     init_drone_mesh();
+    combat_fx_init();
 
     SDL_GL_SetSwapInterval(1);
 
@@ -793,26 +687,7 @@ SDL_StartTextInput();
 
 
 
-        update_trail(dt);
-        // update_ufo_particles(dt);
 
-
-        if (missile.active) {
-            missile.x += missile.vx * dt;
-            missile.y += missile.vy * dt;
-            missile.z += missile.vz * dt;
-        }
-
-        if (explosion.active) {
-            explosion.time += dt;
-
-            float t = explosion.time / EXPLOSION_DURATION;
-            explosion.radius = EXPLOSION_MAX_RADIUS * t;
-
-            if (explosion.time >= EXPLOSION_DURATION) {
-                explosion.active = false;
-            }
-        }
 
 
         SDL_Event e;
@@ -925,57 +800,33 @@ SDL_StartTextInput();
                 if (cam_distance > CAM_MAX) cam_distance = CAM_MAX;
             }
         }
+                
+                // 👇 ADD THIS BLOCK
+                SDL_PumpEvents();
+                const Uint8* keys = SDL_GetKeyboardState(nullptr);
+
+                if (chat_active) {
+                    keys = nullptr; // disable movement while typing
+                }
 
 
-
-        SDL_PumpEvents();
-        const Uint8* keys = SDL_GetKeyboardState(nullptr);
-        if (chat_active) {
-            // Freeze player control while typing
-            keys = nullptr;
-        }
-
-
-        static bool prev_space = false;
         bool space = keys && keys[SDL_SCANCODE_SPACE];
 
-
-        if (space && !prev_space) {
-            if (!missile.active) {
-                // FIRE missile
-                missile.active = true;
-
-                missile.x = px + std::cos(drone_yaw) * 1.4f;
-                missile.y = py + 0.15f;
-                missile.z = pz + std::sin(drone_yaw) * 1.4f;
-
-                missile.vx = std::cos(drone_yaw) * MISSILE_SPEED;
-                missile.vy = 0.0f;
-                missile.vz = std::sin(drone_yaw) * MISSILE_SPEED;
-            }
-            else {
-                // DETONATE missile
-                missile.active = false;
-
-                explosion.active = true;
-                explosion.x = missile.x;
-                explosion.y = missile.y;
-                explosion.z = missile.z;
-                explosion.radius = 0.2f;
-                explosion.time = 0.0f;
-            }
-
-        }
-
-       
+        combat_fx_handle_fire(
+            space,
+            prev_space,
+            px, py, pz,
+            drone_yaw
+        );
 
         prev_space = space;
 
+
+
+
+
         float forward = 0, strafe = 0, vertical = 0, turn = 0;
-        boost_active = keys && (
-            keys[SDL_SCANCODE_LSHIFT] ||
-            keys[SDL_SCANCODE_RSHIFT]
-            );
+
 
 
 
@@ -1025,34 +876,6 @@ SDL_StartTextInput();
         float right_x = -sy;
         float right_z = cy;
 
-
-        // Front-left
-        spawn_trail(
-            px + (-right_x + forward_x) * rotor_radius,
-            py + rotor_height,
-            pz + (-right_z + forward_z) * rotor_radius
-        );
-
-        // Front-right
-        spawn_trail(
-            px + (right_x + forward_x) * rotor_radius,
-            py + rotor_height,
-            pz + (right_z + forward_z) * rotor_radius
-        );
-
-        // Back-left
-        spawn_trail(
-            px + (-right_x - forward_x) * rotor_radius,
-            py + rotor_height,
-            pz + (-right_z - forward_z) * rotor_radius
-        );
-
-        // Back-right
-        spawn_trail(
-            px + (right_x - forward_x) * rotor_radius,
-            py + rotor_height,
-            pz + (right_z - forward_z) * rotor_radius
-        );
 
 
         uint8_t packet[512];
@@ -1274,7 +1097,8 @@ SDL_StartTextInput();
 // ------------------------------------------------------------
 glEnable(GL_LIGHTING);
 glEnable(GL_COLOR_MATERIAL);
-draw_terrain(cam.pos.x, cam.pos.z);
+draw_terrain(cam.pos.x, cam.pos.z, now * 0.001f);
+combat_fx_render(drone_yaw);
 
 
 
@@ -1283,24 +1107,7 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
         glEnable(GL_LIGHTING);
 
-        draw_trail();
-        if (missile.active) {
-            glPushMatrix();
-            glTranslatef(missile.x, missile.y, missile.z);
-            glRotatef(drone_yaw * 57.2958f, 0, 1, 0);
-            draw_missile();
-            glPopMatrix();
-        }
 
-        if (explosion.active) {
-            float t = explosion.time / EXPLOSION_DURATION;
-            float alpha = 1.0f - t;
-
-            glPushMatrix();
-            glTranslatef(explosion.x, explosion.y, explosion.z);
-            draw_explosion_sphere(explosion.radius, alpha);
-            glPopMatrix();
-        }
 
 
         // Local drone (metallic)
@@ -1365,65 +1172,22 @@ draw_terrain(cam.pos.x, cam.pos.z);
             if (!replication.sample(pid, render_time, a, b))
                 continue;
 
-            has_remote[pid] = true;
-
             float alpha = clamp01(
                 float((render_time - a.server_time) /
-                      (b.server_time - a.server_time))
+                    (b.server_time - a.server_time))
             );
 
-            // ---- Remote rotor trails (derived locally) ----
-            float rx = lerp(a.x, b.x, alpha);
-            float ry = lerp(a.y, b.y, alpha);
-            float rz = lerp(a.z, b.z, alpha);
-
-            float ryaw = lerp(a.yaw, b.yaw, alpha);
-            bool idle = is_idle(a, b);
-
+            // --- Remote idle pose ---
             IdlePose idle_pose{};
-            if (idle) {
+            if (is_idle(a, b)) {
                 idle_pose = compute_idle_pose(pid, render_time);
             }
 
-            float cy_r = std::cos(ryaw);
-            float sy_r = std::sin(ryaw);
+            // Interpolated yaw
+            float ryaw = lerp_angle(a.yaw, b.yaw, alpha);
 
-            // Same basis as local player
-            float fwd_x = cy_r;
-            float fwd_z = sy_r;
-            float right_x = -sy_r;
-            float right_z = cy_r;
 
-            const float rotor_radius = 0.55f;
-            const float rotor_height = 0.05f;
-
-            // Front-left
-            spawn_trail(
-                rx + (-right_x + fwd_x) * rotor_radius,
-                ry + rotor_height,
-                rz + (-right_z + fwd_z) * rotor_radius
-            );
-
-            // Front-right
-            spawn_trail(
-                rx + (right_x + fwd_x) * rotor_radius,
-                ry + rotor_height,
-                rz + (right_z + fwd_z) * rotor_radius
-            );
-
-            // Back-left
-            spawn_trail(
-                rx + (-right_x - fwd_x) * rotor_radius,
-                ry + rotor_height,
-                rz + (-right_z - fwd_z) * rotor_radius
-            );
-
-            // Back-right
-            spawn_trail(
-                rx + (right_x - fwd_x) * rotor_radius,
-                ry + rotor_height,
-                rz + (right_z - fwd_z) * rotor_radius
-            );
+            has_remote[pid] = true;
 
 
             
@@ -1592,6 +1356,7 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
         SDL_GL_SwapWindow(win);
     }
+    combat_fx_shutdown();
 
     audio_shutdown();
 

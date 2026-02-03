@@ -8,11 +8,13 @@
 
 #include <cmath>
 #include <algorithm>
-
+#include <vector>
+#include <cstdint>
 #include "client/render_terrain.hpp"
 
 static float noise(float x, float z);
 
+static GLuint g_grass_tex = 0;
 
 static float grass_field(float x, float z) {
     // Large-scale density map (patches)
@@ -237,15 +239,84 @@ static void set_zone_color(TerrainZone zone, float height, float slope, float wx
     );
 }
 
+static GLuint generate_grass_texture(int size = 256)
+{
+    std::vector<uint8_t> pixels(size * size * 4);
+
+    auto at = [&](int x, int y) -> uint8_t* {
+        return &pixels[(y * size + x) * 4];
+        };
+
+    for (int y = 0; y < size; ++y) {
+        float v = float(y) / float(size - 1);
+
+        for (int x = 0; x < size; ++x) {
+            float u = float(x) / float(size - 1);
+
+            // ---- blade shape (vertical falloff) ----
+            float blade = std::pow(1.0f - v, 2.6f);
+
+            // ---- noisy edges ----
+            float edge =
+                std::sin(u * 18.0f) *
+                std::sin(v * 9.0f) * 0.12f;
+
+            float alpha = blade + edge;
+            alpha = std::clamp(alpha, 0.0f, 1.0f);
+
+            // ---- color variation ----
+            float noise =
+                std::sin(u * 24.0f + v * 17.0f) * 0.1f +
+                std::sin(u * 53.0f) * 0.05f;
+
+            float g = 0.65f + noise;
+            float r = g * 0.45f;
+            float b = g * 0.35f;
+
+            uint8_t* p = at(x, y);
+            p[0] = uint8_t(r * 255);
+            p[1] = uint8_t(g * 255);
+            p[2] = uint8_t(b * 255);
+            p[3] = uint8_t(alpha * 255);
+        }
+    }
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        size,
+        size,
+        0,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        pixels.data()
+    );
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    return tex;
+}
 
 // ============================================================
 // Grass rendering (SAFE + FAST)
 // ============================================================
 
-static void draw_grass(float cam_x, float cam_z, float time) {
+static void draw_grass(float cam_x, float cam_z, float time)
+{
     glDisable(GL_LIGHTING);
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, g_grass_tex);
+
     glEnable(GL_ALPHA_TEST);
-    glAlphaFunc(GL_GREATER, 0.2f);
+    glAlphaFunc(GL_GREATER, 0.25f);
 
     int base_x = int(std::floor(cam_x / GRID_SCALE));
     int base_z = int(std::floor(cam_z / GRID_SCALE));
@@ -286,22 +357,6 @@ static void draw_grass(float cam_x, float cam_z, float time) {
             float field = grass_field(wx, wz);
             float density = 0.9f + field * 1.2f;
 
-            /* ---------- BILLBOARD LOD ---------- */
-            if (dist > GRASS_LOD1_END) {
-                float h = GRASS_HEIGHT * 1.3f;
-                glColor3f(0.30f, 0.65f, 0.30f);
-
-                glBegin(GL_QUADS);
-                glVertex3f(wx - 0.35f, wy, wz);
-                glVertex3f(wx + 0.35f, wy, wz);
-                glVertex3f(wx + 0.35f, wy + h, wz);
-                glVertex3f(wx - 0.35f, wy + h, wz);
-                glEnd();
-
-                continue;
-            }
-
-            /* ---------- STRANDS ---------- */
             int strands = (dist < GRASS_LOD0_END)
                 ? int(10 * density) + int(hash(x + 41, z + 97) * 6)
                 : int(5 * density) + int(hash(x + 41, z + 97) * 3);
@@ -325,23 +380,21 @@ static void draw_grass(float cam_x, float cam_z, float time) {
                 float h = GRASS_HEIGHT *
                     (0.6f + hash(x + i * 7, z + i * 11));
 
-                float tint = 0.85f + hash(x + i * 5, z + i * 9) * 0.3f;
-
-                glColor3f(0.32f * tint, 0.68f * tint, 0.32f * tint);
-
                 float bend = wind * 1.4f;
 
                 glBegin(GL_QUADS);
 
-                glVertex3f(px - GRASS_WIDTH, wy, pz);
-                glVertex3f(px + GRASS_WIDTH, wy, pz);
-                glVertex3f(px + GRASS_WIDTH + bend, wy + h, pz);
-                glVertex3f(px - GRASS_WIDTH + bend, wy + h, pz);
+                // X-facing quad
+                glTexCoord2f(0, 0); glVertex3f(px - GRASS_WIDTH, wy, pz);
+                glTexCoord2f(1, 0); glVertex3f(px + GRASS_WIDTH, wy, pz);
+                glTexCoord2f(1, 1); glVertex3f(px + GRASS_WIDTH + bend, wy + h, pz);
+                glTexCoord2f(0, 1); glVertex3f(px - GRASS_WIDTH + bend, wy + h, pz);
 
-                glVertex3f(px, wy, pz - GRASS_WIDTH);
-                glVertex3f(px, wy, pz + GRASS_WIDTH);
-                glVertex3f(px + bend, wy + h, pz + GRASS_WIDTH);
-                glVertex3f(px + bend, wy + h, pz - GRASS_WIDTH);
+                // Z-facing quad
+                glTexCoord2f(0, 0); glVertex3f(px, wy, pz - GRASS_WIDTH);
+                glTexCoord2f(1, 0); glVertex3f(px, wy, pz + GRASS_WIDTH);
+                glTexCoord2f(1, 1); glVertex3f(px + bend, wy + h, pz + GRASS_WIDTH);
+                glTexCoord2f(0, 1); glVertex3f(px + bend, wy + h, pz - GRASS_WIDTH);
 
                 glEnd();
             }
@@ -349,6 +402,7 @@ static void draw_grass(float cam_x, float cam_z, float time) {
     }
 
     glDisable(GL_ALPHA_TEST);
+    glDisable(GL_TEXTURE_2D);
     glEnable(GL_LIGHTING);
 }
 
@@ -459,8 +513,6 @@ static void draw_tree(float x, float z, float time) {
     glEnable(GL_LIGHTING);
 
 
-    glEnable(GL_LIGHTING);
-
 }
 
 static void draw_trees_near(float anchor_x, float anchor_z, float time) {
@@ -514,7 +566,13 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
 
 
-    void draw_terrain(float cam_x, float cam_z) {
+    void draw_terrain(float cam_x, float cam_z, float time) {
+
+        if (g_grass_tex == 0) {
+            g_grass_tex = generate_grass_texture(256);
+        }
+
+
 
         // -------- Lighting --------
         glEnable(GL_LIGHTING);
@@ -586,20 +644,14 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
 
         // -------- TREE PASS --------
-        {
-            float time = SDL_GetTicks() * 0.001f;
 
 
             draw_trees_near(cam_x, cam_z, time);
 
-        }
 
 
-
-        // -------- GRASS PASS --------
-        draw_grass(cam_x, cam_z, SDL_GetTicks() * 0.001f);
-
-
+            // -------- GRASS PASS --------
+            draw_grass(cam_x, cam_z, time);
 
         glDisable(GL_FOG);
         glEnable(GL_LIGHTING);

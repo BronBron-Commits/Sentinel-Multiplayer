@@ -56,6 +56,7 @@ find_package(SDL2_mixer CONFIG REQUIRED)
 
 add_executable(client
     src/client/client_main.cpp
+    src/client/vfx/combat_fx.cpp
 
     src/client/render/render_drone_mesh.cpp
     src/client/render/render_drone_shader.cpp
