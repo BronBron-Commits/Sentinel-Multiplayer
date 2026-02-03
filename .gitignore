@@ -8,3 +8,4 @@ build-release/
 vcpkg_installed/ 
 cmake/ 
 cmake/ 
+cmake/
