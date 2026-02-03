@@ -12,7 +12,6 @@
 #include <glad/glad.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
-#include <SDL_mixer.h>
 
 
 
@@ -33,6 +32,7 @@
 #include "client/camera.hpp"
 #include "client/render_sky.hpp"
 #include "client/render/render_drone_mesh.hpp"
+#include "client/audio/audio_system.hpp"
 
 
 #include "sentinel/net/net_api.hpp"
@@ -59,11 +59,7 @@ static void fix_working_directory()
 // Forward declarations (required by C++)
 // ------------------------------------------------------------
 struct Camera;
-static Mix_Music* g_music = nullptr;
-static Mix_Chunk* g_drone_move_sfx = nullptr;
-static int g_drone_move_channel = -1;
-static Mix_Chunk* g_drone_move_boost_sfx = nullptr;
-static bool g_drone_boost_active = false;
+
 
 
 
@@ -108,12 +104,6 @@ static float frand(float a, float b);
 
 // ADD THIS LINE
 static void draw_unit_cube();
-
-// ------------------------------------------------------------
-// Audio tuning
-// ------------------------------------------------------------
-constexpr int MUSIC_VOLUME = 5;  // very soft ambient
-constexpr int DRONE_BASE_VOLUME = 40;  // audible but not harsh
 
 constexpr float UFO_CRUISE_SPEED = 1.2f;   // slow glide
 constexpr float UFO_STEER_RATE = 0.4f;   // how fast direction changes
@@ -668,27 +658,11 @@ int main()
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
 
-
-    // ------------------------------------------------------------
-// SDL_mixer initialization (REQUIRED)
-// ------------------------------------------------------------
-    int mix_flags = MIX_INIT_OGG | MIX_INIT_MP3;
-    int mix_initted = Mix_Init(mix_flags);
-
-    if ((mix_initted & mix_flags) != mix_flags) {
-        printf("[audio] Mix_Init failed: %s\n", Mix_GetError());
-    }
-
-    if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        printf("[audio] Mix_OpenAudio failed: %s\n", Mix_GetError());
-    }
-    else {
-        printf("[audio] Audio device opened\n");
+    if (!audio_init()) {
+        printf("[audio] audio_init failed\n");
     }
 
 
-
-    Mix_AllocateChannels(16);
 
     if (TTF_Init() != 0) {
         printf("[chat] TTF_Init failed: %s\n", TTF_GetError());
@@ -710,35 +684,7 @@ int main()
         return 1;
     }
 
-    // ------------------------------------------------------------
-    // Load and start background music (client-side only)
-    // ------------------------------------------------------------
-    g_music = Mix_LoadMUS("assets/audio/main_loop.ogg");
-    if (!g_music) {
-        printf("[audio] Failed to load music: %s\n", Mix_GetError());
-    }
-    else {
-        Mix_VolumeMusic(MUSIC_VOLUME);
-        // subtle ambient level
-        Mix_PlayMusic(g_music, -1);          // infinite seamless loop
-    }
 
-
-    g_drone_move_sfx = Mix_LoadWAV("assets/audio/drone_move.wav");
-    if (!g_drone_move_sfx) {
-        printf("[audio] Failed to load drone movement sound: %s\n", Mix_GetError());
-    }
-    else {
-        Mix_VolumeChunk(g_drone_move_sfx, MIX_MAX_VOLUME / 4);
-    }
-
-    g_drone_move_boost_sfx = Mix_LoadWAV("assets/audio/drone_move_boost.wav");
-    if (!g_drone_move_boost_sfx) {
-        printf("[audio] Failed to load boosted drone sound: %s\n", Mix_GetError());
-    }
-    else {
-        Mix_VolumeChunk(g_drone_move_boost_sfx, MIX_MAX_VOLUME / 4);
-    }
 
 
     if (!g_chat_font) {
@@ -1047,52 +993,8 @@ SDL_StartTextInput();
             std::fabs(strafe) > 0.01f ||
             std::fabs(vertical) > 0.01f;
 
-        if (g_drone_move_sfx) {
+        audio_on_drone_move(drone_moving, boost_active);
 
-            Mix_Chunk* desired =
-                boost_active && g_drone_move_boost_sfx
-                ? g_drone_move_boost_sfx
-                : g_drone_move_sfx;
-
-            if (drone_moving) {
-
-                if (g_drone_move_channel == -1 ||
-                    g_drone_boost_active != boost_active) {
-
-                    // Restart loop with correct pitch version
-                    if (g_drone_move_channel != -1)
-                        Mix_HaltChannel(g_drone_move_channel);
-
-                    g_drone_move_channel = Mix_PlayChannel(
-                        -1,
-                        desired,
-                        -1
-                    );
-
-                    g_drone_boost_active = boost_active;
-                }
-
-                float speed =
-                    std::fabs(forward) +
-                    std::fabs(strafe) +
-                    std::fabs(vertical);
-
-                speed = std::fmin(speed, 1.0f);
-
-                int vol = int(
-                    DRONE_BASE_VOLUME +
-                    speed * (MIX_MAX_VOLUME / 3)
-                    );
-
-                Mix_Volume(g_drone_move_channel, vol);
-            }
-            else {
-                if (g_drone_move_channel != -1) {
-                    Mix_HaltChannel(g_drone_move_channel);
-                    g_drone_move_channel = -1;
-                }
-            }
-        }
 
 
         drone_yaw += turn * YAW_SPEED * dt;
@@ -1690,22 +1592,9 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
         SDL_GL_SwapWindow(win);
     }
-    // ------------------------------------------------------------
-    // Shutdown audio
-    // ------------------------------------------------------------
-    if (g_music) {
-        Mix_HaltMusic();
-        Mix_FreeMusic(g_music);
-        g_music = nullptr;
-    }
 
-    if (g_drone_move_sfx) {
-        Mix_HaltChannel(g_drone_move_channel);
-        Mix_FreeChunk(g_drone_move_sfx);
-        g_drone_move_sfx = nullptr;
-    }
+    audio_shutdown();
 
-    Mix_CloseAudio();
 
 
     // ------------------------------------------------------------
