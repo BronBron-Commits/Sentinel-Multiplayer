@@ -26,10 +26,12 @@
 #include "client/render_drone.hpp"
 #include "client/render_terrain.hpp"
 #include "client/render_drone_shader.hpp"
+#include "client/world/npc_system.hpp"
 
 #include "client/camera.hpp"
 #include "client/render_sky.hpp"
-#include "render/render_drone_mesh.hpp"
+#include "client/render/render_drone_mesh.hpp"
+
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
@@ -249,62 +251,9 @@ struct Explosion {
 static Explosion explosion;
 
 
-struct UfoNPC {
-    float x;
-    float y;
-    float z;
-
-    float base_y;
-    float hover_amp;
-    float hover_speed;
-
-    float yaw;
-};
-
-static UfoNPC g_ufo = {
-    12.0f,   // x
-    6.0f,    // y (initial)
-    -18.0f,  // z
-    6.0f,    // base_y
-    0.8f,    // hover amplitude
-    0.9f,    // hover speed
-    0.0f     // yaw
-};
-
-struct UfoParticle {
-    float x, y, z;
-    float vx, vy, vz;
-    float life;
-};
-
-static constexpr int UFO_PARTICLE_COUNT = 128;
-static UfoParticle ufo_particles[UFO_PARTICLE_COUNT];
 
 
 
-enum class NPCType {
-    Drone,
-    UFO
-};
-
-struct NPC {
-    NPCType type;
-
-    float x, y, z;
-    float vx, vy, vz;
-
-    float yaw;
-    float size;
-
-    // AI state
-    float target_x, target_y, target_z;
-    float think_timer;
-};
-
-
-static constexpr int MAX_NPCS = 12;
-static NPC npcs[MAX_NPCS];
-static int npc_count = 0;
 
 
 
@@ -636,82 +585,7 @@ static void draw_rounded_rect(
     glEnd();
 }
 
-static void spawn_ufo_particle() {
-    for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
-        if (ufo_particles[i].life <= 0.0f) {
 
-            float a = float(rand()) / RAND_MAX * 6.28318f;
-            float r = 2.6f + (float(rand()) / RAND_MAX) * 0.6f;
-
-            ufo_particles[i].x = g_ufo.x + std::cos(a) * r;
-            ufo_particles[i].z = g_ufo.z + std::sin(a) * r;
-            ufo_particles[i].y = g_ufo.y - 0.1f;
-
-            ufo_particles[i].vx = frand(-0.4f, 0.4f);
-            ufo_particles[i].vz = frand(-0.4f, 0.4f);
-            ufo_particles[i].vy = -0.8f - frand(0.0f, 0.6f);
-
-
-            ufo_particles[i].life = 1.0f;
-            break;
-        }
-    }
-}
-
-static void update_ufo_particles(float dt) {
-    // spawn rate
-    for (int i = 0; i < 4; ++i)
-        spawn_ufo_particle();
-
-    for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
-        if (ufo_particles[i].life <= 0.0f)
-            continue;
-
-        ufo_particles[i].x += ufo_particles[i].vx * dt;
-        ufo_particles[i].y += ufo_particles[i].vy * dt;
-        ufo_particles[i].z += ufo_particles[i].vz * dt;
-
-        ufo_particles[i].life -= dt * 1.2f;
-        if (ufo_particles[i].life < 0.0f)
-            ufo_particles[i].life = 0.0f;
-    }
-}
-
-static void draw_ufo_particles(const Camera& cam)
-{
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
-
-    for (int i = 0; i < UFO_PARTICLE_COUNT; ++i) {
-        if (ufo_particles[i].life <= 0.0f)
-            continue;
-
-        float life = ufo_particles[i].life;
-
-        // size + fade
-        float size = 0.12f + (1.0f - life) * 0.25f;
-
-        glPushMatrix();
-        glTranslatef(
-            ufo_particles[i].x,
-            ufo_particles[i].y,
-            ufo_particles[i].z
-        );
-
-        // optional tumble for energy
-        glRotatef(life * 360.0f, 1.0f, 1.0f, 0.0f);
-
-        glScalef(size, size, size);
-
-        // emissive sci-fi color
-        glColor3f(0.25f, 0.85f, 1.0f);
-
-        draw_unit_cube();
-
-        glPopMatrix();
-    }
-}
 
 
 static float frand(float a, float b) {
@@ -719,120 +593,6 @@ static float frand(float a, float b) {
 }
 
 
-
-
-static void spawn_ufo(float x, float y, float z, float size) {
-    if (npc_count >= MAX_NPCS) return;
-
-    NPC& n = npcs[npc_count++];
-    n.type = NPCType::UFO;
-
-    n.x = x;
-    n.y = y + 6.0f;   // lift all UFOs up immediately
-    n.z = z;
-
-    n.vx = n.vy = n.vz = 0.0f;
-    n.yaw = frand(0, 6.28318f);
-
-    n.size = size;
-
-    n.target_x = frand(-40, 40);
-    n.target_y = frand(4, 12);
-    n.target_z = frand(-40, 40);
-    n.think_timer = frand(8.0f, 16.0f);
-}
-
-static void spawn_drone(float x, float y, float z, float size) {
-    if (npc_count >= MAX_NPCS) return;
-
-    NPC& n = npcs[npc_count++];
-    n.type = NPCType::Drone;
-
-    n.x = x; n.y = y; n.z = z;
-    n.vx = n.vy = n.vz = 0.0f;
-    n.yaw = frand(0, 6.28318f);
-
-    n.size = size;
-
-    n.target_x = frand(-30, 30);
-    n.target_y = frand(1.5f, 6.0f);
-    n.target_z = frand(-30, 30);
-    n.think_timer = frand(1.0f, 4.0f);
-}
-
-static void update_npcs(float dt) {
-    for (int i = 0; i < npc_count; ++i) {
-        NPC& n = npcs[i];
-
-        n.think_timer -= dt;
-        if (n.think_timer <= 0.0f) {
-            // pick new target
-            n.target_x = frand(-50, 50);
-            n.target_z = frand(-50, 50);
-
-            if (n.type == NPCType::UFO)
-                n.target_y = frand(12.0f, 20.0f);
-            else
-                n.target_y = frand(1.5f, 6);
-
-            n.think_timer = frand(2.0f, 6.0f);
-
-            if (n.type == NPCType::UFO) {
-                // spawn_ufo_particle_at(n.x, n.y, n.z);
-            }
-
-        }
-
-        float dx = n.target_x - n.x;
-        float dy = n.target_y - n.y;
-        float dz = n.target_z - n.z;
-
-        float dist = std::sqrt(dx * dx + dy * dy + dz * dz) + 0.001f;
-
-        if (n.type == NPCType::UFO) {
-
-            // desired cruise velocity
-            float tx = dx / dist * UFO_CRUISE_SPEED;
-            float ty = dy / dist * UFO_CRUISE_SPEED;
-            float tz = dz / dist * UFO_CRUISE_SPEED;
-
-            // smooth steering (no snapping)
-            n.vx = lerp(n.vx, tx, UFO_STEER_RATE * dt);
-            n.vy = lerp(n.vy, ty, UFO_STEER_RATE * dt);
-            n.vz = lerp(n.vz, tz, UFO_STEER_RATE * dt);
-
-            // gentle drift
-            n.vx *= UFO_DRIFT_DAMPING;
-            n.vy *= UFO_DRIFT_DAMPING;
-            n.vz *= UFO_DRIFT_DAMPING;
-
-            // integrate
-            n.x += n.vx * dt;
-            n.y += n.vy * dt;
-            n.z += n.vz * dt;
-
-            // slow yaw alignment
-            float desired_yaw = std::atan2(n.vz, n.vx);
-            n.yaw = lerp(n.yaw, desired_yaw, dt * 0.8f);
-
-        }
-        else {
-            // drones stay responsive
-            float speed = 5.0f;
-
-            n.vx = dx / dist * speed;
-            n.vy = dy / dist * speed;
-            n.vz = dz / dist * speed;
-
-            n.x += n.vx * dt;
-            n.y += n.vy * dt;
-            n.z += n.vz * dt;
-
-            n.yaw = std::atan2(n.vz, n.vx);
-        }
-
-    }
-}
 static void draw_unit_cube()
 {
     glBegin(GL_QUADS);
@@ -998,14 +758,8 @@ SDL_StartTextInput();
 // Spawn local NPCs (AI-only, client-side)
 // ------------------------------------------------------------
     srand(1337); // deterministic
+    npc_init();
 
-    spawn_ufo(15.0f, 8.0f, -20.0f, 1.0f);
-    spawn_ufo(-25.0f, 12.0f, 10.0f, 1.6f);
-    spawn_ufo(5.0f, 6.0f, 30.0f, 0.8f);
-
-    spawn_drone(10.0f, 3.0f, 10.0f, 1.0f);
-    spawn_drone(-12.0f, 4.0f, -8.0f, 0.7f);
-    spawn_drone(6.0f, 5.0f, -18.0f, 1.2f);
 
 
 
@@ -1054,7 +808,8 @@ SDL_StartTextInput();
         Uint32 now = SDL_GetTicks();
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
-        update_npcs(dt);
+        npc_update(dt);
+
 
 
 
@@ -1587,59 +1342,10 @@ draw_terrain(cam.pos.x, cam.pos.z);
 
 
 
-        // ------------------------------------------------------------
-// NPC rendering (AI-driven)
-// ------------------------------------------------------------
-        for (int i = 0; i < npc_count; ++i) {
-            const NPC& n = npcs[i];
-
-            glEnable(GL_LIGHTING);
-            glDisable(GL_COLOR_MATERIAL);
-
-            glPushMatrix();
-
-            glTranslatef(n.x, n.y, n.z);
-            glRotatef(n.yaw * 57.2958f, 0, 1, 0);
-            glScalef(n.size, n.size, n.size);
-
-            if (n.type == NPCType::UFO) {
-                set_metal_material(0.55f, 0.6f, 0.7f);
-                draw_ufo();
-            }
-            else {
-                glDisable(GL_LIGHTING);
-                glUseProgram(g_drone_program);
-                // REQUIRED: brushed metal direction (world-space)
-                glUniform3f(uBrushDir, 1.0f, 0.0f, 0.0f);
-
-                // material
-                glUniform3f(uBaseColor, 0.45f, 0.45f, 0.50f);
-                glUniform1f(uMetallic, 0.75f);
-                glUniform1f(uRoughness, 0.45f);
-
-                // camera + light
-                glUniform3f(uCameraPos, cam.pos.x, cam.pos.y, cam.pos.z);
-                glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
-                glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
-
-                upload_fixed_matrices();
-                draw_drone_mesh();
-
-                glUseProgram(0);
-                glEnable(GL_LIGHTING);
-            }
-
-            glPopMatrix();
-
-            glEnable(GL_COLOR_MATERIAL);
-        }
-
-
        
 
 
         glEnable(GL_LIGHTING);
-        draw_ufo_particles(cam);
 
         draw_trail();
         if (missile.active) {
