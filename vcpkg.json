@@ -1,10 +1,10 @@
 {
   "name": "sentinel-multiplayer",
-  "version": "0.1.0",
+  "version-string": "0.1.0-alpha",
   "dependencies": [
     "sdl2",
     "sdl2-ttf",
-    "sdl2-mixer"
-  ],
-  "builtin-baseline": "66009b2d73ffbd8782231cf4fed3e594b2312855"
+    "sdl2-mixer",
+    "glew"
+  ]
 }
