@@ -32,11 +32,10 @@
 #include "client/input/control_system.hpp"
 
 #include "client/camera.hpp"
-#include "client/render_sky.hpp"
 #include "client/render/render_drone_mesh.hpp"
 #include "client/audio/audio_system.hpp"
 #include "client/vfx/combat_fx.hpp"
-
+#include "client/render/render_sky.hpp"
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
@@ -1090,39 +1089,33 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         gluPerspective(60.0f, aspect, 0.1f, 500.0f);
 
-
         // ============================================================
-        // SKY (camera-space, yaw-only, horizon locked)
+        // SKY (rotation only, infinite distance)
         // ============================================================
-
         glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT);
 
         glDisable(GL_LIGHTING);
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
 
-        glMatrixMode(GL_PROJECTION);
-        glPushMatrix();
-        // Projection already set (perspective)
-        glPopMatrix();
-
         glMatrixMode(GL_MODELVIEW);
         glPushMatrix();
-
-        // Start from identity (NO camera transform)
         glLoadIdentity();
 
-        // Apply ONLY yaw (explicitly cancel pitch & roll)
-        float yaw_deg = camera_yaw * 57.2958f;
-        glRotatef(yaw_deg, 0.0f, 1.0f, 0.0f);
+        // Apply camera rotation ONLY (inverse)
+        glRotatef(-drone_pitch * 57.2958f, 1, 0, 0);
+        glRotatef(-camera_yaw * 57.2958f, 0, 1, 0);
 
-        // Draw sky
-        draw_sky(now * 0.001f);
+        draw_sky(
+            now * 0.001f,
+            camera_yaw,
+            drone_pitch
+        );
 
         glPopMatrix();
-
         glDepthMask(GL_TRUE);
         glPopAttrib();
+
 
 
 
