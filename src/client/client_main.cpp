@@ -721,6 +721,10 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                     name_buffer += e.text.text;
                 }
 
+                if (e.type == SDL_MOUSEWHEEL) {
+                    controls_on_mouse_wheel((float)e.wheel.y);
+                }
+
                 if (e.type == SDL_KEYDOWN) {
 
                     if (e.key.keysym.sym == SDLK_BACKSPACE) {
@@ -759,6 +763,12 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                     (float)e.motion.yrel
                 );
             }
+
+            if (e.type == SDL_MOUSEWHEEL) {
+                controls_on_mouse_wheel((float)e.wheel.y);
+            }
+
+
         }
 
 
@@ -777,6 +787,10 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         controls_update();
         const ControlState& ctl = controls_get();
+        constexpr float ZOOM_SPEED = 1.2f;
+
+        cam_distance -= ctl.zoom_delta * ZOOM_SPEED;
+        cam_distance = std::clamp(cam_distance, CAM_MIN, CAM_MAX);
 
 
         constexpr float MOUSE_SENS = 0.0025f;

@@ -64,15 +64,22 @@ void controls_on_mouse_motion(float dx, float dy)
     g_state.look_dy += dy;
 }
 
+void controls_on_mouse_wheel(float y)
+{
+    g_state.zoom_delta += y;
+}
+
+
 // ------------------------------------------------------------
 // End of frame (called AFTER using look_dx/look_dy)
 // ------------------------------------------------------------
 void controls_end_frame()
 {
-    // Mouse deltas are one-frame impulses
     g_state.look_dx = 0.0f;
     g_state.look_dy = 0.0f;
+    g_state.zoom_delta = 0.0f;
 }
+
 
 // ------------------------------------------------------------
 // Access current control state
