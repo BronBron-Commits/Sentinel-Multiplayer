@@ -46,6 +46,9 @@
 #include "util/math_util.hpp"
 
 
+static float drone_roll = 0.0f;
+
+
 // ------------------------------------------------------------
 // Fix working directory so assets load when double-clicked
 // ------------------------------------------------------------
@@ -125,7 +128,7 @@ constexpr float STRAFE_SPEED   = 8.0f;
 constexpr float CAM_BACK = 8.0f;
 constexpr float CAM_UP   = 4.5f;
 static float camera_yaw = 0.0f;
-static float camera_pitch = 0.0f;
+
 
 
 
@@ -779,10 +782,12 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         constexpr float MOUSE_SENS = 0.0025f;
 
         camera_yaw += ctl.look_dx * MOUSE_SENS;
-        camera_pitch -= ctl.look_dy * MOUSE_SENS;
+        drone_yaw += ctl.look_dx * MOUSE_SENS;
+
+        drone_pitch -= ctl.look_dy * MOUSE_SENS;
 
 
-        camera_pitch = std::clamp(camera_pitch, -1.2f, 1.2f);
+        drone_pitch = std::clamp(drone_pitch, -1.2f, 1.2f);
 
         controls_end_frame(); // clears look_dx / look_dy
 
@@ -825,29 +830,50 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
 
-        float cy = std::cos(drone_yaw);
-        float sy = std::sin(drone_yaw);
-
-
+        // ------------------------------------------------------------
+        // THRUST-BASED FLIGHT (CAMERA DIRECTION DRIVES MOVEMENT)
+        // ------------------------------------------------------------
         float speed_mul = boost_active ? 2.0f : 1.0f;
 
-        px += (cy * forward * MOVE_SPEED * speed_mul +
-            -sy * strafe * STRAFE_SPEED * speed_mul) * dt;
+        // Camera forward vector (includes pitch)
+        float fwd_x = std::cos(drone_yaw) * std::cos(drone_pitch);
+        float fwd_y = std::sin(drone_pitch);
+        float fwd_z = std::sin(drone_yaw) * std::cos(drone_pitch);
 
-        pz += (sy * forward * MOVE_SPEED * speed_mul +
-            cy * strafe * STRAFE_SPEED * speed_mul) * dt;
+        // Camera right vector (yaw only)
+        float right_x = -std::sin(camera_yaw);
+        float right_z = std::cos(camera_yaw);
 
-        py += ctl.vertical * MOVE_SPEED * speed_mul * dt;
+        // Forward / backward thrust ONLY
+        if (std::fabs(forward) > 0.001f)
+        {
+            px += fwd_x * forward * MOVE_SPEED * speed_mul * dt;
+            py += fwd_y * forward * MOVE_SPEED * speed_mul * dt;
+            pz += fwd_z * forward * MOVE_SPEED * speed_mul * dt;
+        }
+
+        // Optional strafe (flat, no vertical)
+        if (std::fabs(strafe) > 0.001f)
+        {
+            px += right_x * strafe * STRAFE_SPEED * speed_mul * dt;
+            pz += right_z * strafe * STRAFE_SPEED * speed_mul * dt;
+        }
+
+
+        // ------------------------------------------------------------
+// CAMERA TARGET (ALWAYS LOCKED TO DRONE)
+// ------------------------------------------------------------
+        cam.target = {
+            px + fwd_x,
+            py + fwd_y,
+            pz + fwd_z
+        };
+
+
 
         // ---- Rotor trails (4x) ----
         const float rotor_radius = 0.55f;
         const float rotor_height = 0.05f;
-
-        float forward_x = cy;
-        float forward_z = sy;
-
-        float right_x = -sy;
-        float right_z = cy;
 
 
 
@@ -895,24 +921,16 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         // -------- CAMERA (USE camera_yaw / camera_pitch) --------
 
-        // Forward vector from mouse look
-        float fwd_x = std::cos(camera_yaw) * std::cos(camera_pitch);
-        float fwd_y = std::sin(camera_pitch);
-        float fwd_z = std::sin(camera_yaw) * std::cos(camera_pitch);
 
-        // Camera target (what we look at)
-        cam.target = {
-            px + fwd_x,
-            py + fwd_y,
-            pz + fwd_z
-        };
+
 
         // Camera position (orbit behind drone)
         cam.pos = {
-            px - std::cos(camera_yaw) * cam_distance,
-            py + CAM_UP,
-            pz - std::sin(camera_yaw) * cam_distance
+            px - fwd_x * cam_distance,
+            py - fwd_y * cam_distance + CAM_UP,
+            pz - fwd_z * cam_distance
         };
+
 
 
 
