@@ -8,7 +8,7 @@
 #include <cmath>
 #include <algorithm>
 
-#include "client/render_sky.hpp"
+#include "render_sky.hpp"
 
 // ============================================================
 // Tuning

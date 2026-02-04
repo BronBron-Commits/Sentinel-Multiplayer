@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <vector>
 #include <cstdint>
-#include "client/render_terrain.hpp"
+#include "render_terrain.hpp"
 
 static float noise(float x, float z);
 

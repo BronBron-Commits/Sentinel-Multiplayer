@@ -1,9 +1,9 @@
 #pragma once
+#include "render/camera.hpp"
+
 
 #include <cmath>
 
-// Forward-declare only what we need
-struct Camera;
 
 // ------------------------------------------------------------
 // Combat FX public API

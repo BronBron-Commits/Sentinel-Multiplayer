@@ -31,19 +31,13 @@ else()
 endif()
 
 # ============================================================
-# GLAD
+# GLAD (vcpkg)
 # ============================================================
 
-add_library(glad STATIC
-    external/glad/src/glad.c
-)
-
-target_include_directories(glad PUBLIC
-    external/glad/include
-)
+find_package(glad CONFIG REQUIRED)
 
 # ============================================================
-# SDL2 (vcpkg CONFIG mode)
+# SDL2 (vcpkg)
 # ============================================================
 
 find_package(SDL2 CONFIG REQUIRED)
@@ -62,8 +56,8 @@ add_executable(client
     src/client/render/render_drone_shader.cpp
     src/client/render/render_sky.cpp
     src/client/render/render_terrain.cpp
-    src/client/input/control_system.cpp
 
+    src/client/input/control_system.cpp
     src/client/audio/audio_system.cpp
     src/client/core/camera_helpers.cpp
     src/client/util/math_util.cpp
@@ -74,23 +68,24 @@ add_executable(client
 )
 
 target_include_directories(client PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    external/glad/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client
 )
 
 target_link_libraries(client PRIVATE
     sentinel_net
-    glad
+    glad::glad
 
     SDL2::SDL2
-    SDL2::SDL2main
     SDL2_ttf::SDL2_ttf
     SDL2_mixer::SDL2_mixer
 
     opengl32
     glu32
 )
+
+if (WIN32)
+    target_link_libraries(client PRIVATE SDL2::SDL2main)
+endif()
 
 # ============================================================
 # POST-BUILD: COPY RUNTIME DLLs (Windows)

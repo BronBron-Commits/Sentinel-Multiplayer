@@ -1,4 +1,4 @@
-#include "client/render_drone_shader.hpp"
+#include "render_drone_shader.hpp"
 
 #include <glad/glad.h>
 #include <cstdio>

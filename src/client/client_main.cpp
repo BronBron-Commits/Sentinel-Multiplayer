@@ -23,19 +23,21 @@
 #include <cstdint>
 #include <unordered_map>
 
-#include "client/render_grid.hpp"
-#include "client/render_drone.hpp"
-#include "client/render_terrain.hpp"
-#include "client/render_drone_shader.hpp"
-#include "client/world/npc_system.hpp"
+#include "render/render_terrain.hpp"
+#include "render/render_drone_shader.hpp"
+#include "render/render_sky.hpp"
+#include "render/camera.hpp"
+#include "render/render_drone_mesh.hpp"
+#include "audio/audio_system.hpp"
+#include "vfx/combat_fx.hpp"
+#include "render/render_sky.hpp"
 
-#include "client/input/control_system.hpp"
+#include "world/npc_system.hpp"
 
-#include "client/camera.hpp"
-#include "client/render/render_drone_mesh.hpp"
-#include "client/audio/audio_system.hpp"
-#include "client/vfx/combat_fx.hpp"
-#include "client/render/render_sky.hpp"
+#include "input/control_system.hpp"
+
+
+
 
 #include "sentinel/net/net_api.hpp"
 #include "sentinel/net/replication/replication_client.hpp"
@@ -1090,32 +1092,13 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         gluPerspective(60.0f, aspect, 0.1f, 500.0f);
 
         // ============================================================
-        // SKY (rotation only, infinite distance)
+        // SKY (infinite distance, camera-rotation only)
         // ============================================================
-        glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT);
-
-        glDisable(GL_LIGHTING);
-        glDisable(GL_DEPTH_TEST);
-        glDepthMask(GL_FALSE);
-
-        glMatrixMode(GL_MODELVIEW);
-        glPushMatrix();
-        glLoadIdentity();
-
-        // Apply camera rotation ONLY (inverse)
-        glRotatef(-drone_pitch * 57.2958f, 1, 0, 0);
-        glRotatef(-camera_yaw * 57.2958f, 0, 1, 0);
-
         draw_sky(
             now * 0.001f,
             camera_yaw,
             drone_pitch
         );
-
-        glPopMatrix();
-        glDepthMask(GL_TRUE);
-        glPopAttrib();
-
 
 
 
@@ -1126,8 +1109,9 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         gluLookAt(
             cam.pos.x, cam.pos.y, cam.pos.z,
             cam.target.x, cam.target.y, cam.target.z,
-            0, 1, 0
+            0.0f, 1.0f, 0.0f
         );
+
 
         // ------------------------------------------------------------
 // TERRAIN

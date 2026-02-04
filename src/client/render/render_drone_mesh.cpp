@@ -1,6 +1,9 @@
-#include "client/render_drone_mesh.hpp"
+#include <glad/glad.h>
+#include <SDL.h>          // if you use SDL types
 #include <vector>
 #include <cmath>
+
+#include "render/render_drone_mesh.hpp"
 
 /*
     Advanced static drone mesh
