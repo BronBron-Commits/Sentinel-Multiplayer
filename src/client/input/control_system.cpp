@@ -52,7 +52,14 @@ void controls_update(bool ui_blocked)
     // Fire
     if (keys[SDL_SCANCODE_SPACE])
         g_state.fire = true;
+
+    // ------------------------------------------------------------
+    // Middle mouse button = roll modifier
+    // ------------------------------------------------------------
+    g_state.roll_modifier =
+        (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
 }
+
 
 // ------------------------------------------------------------
 // Mouse motion (called from SDL_PollEvent)

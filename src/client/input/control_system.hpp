@@ -7,6 +7,9 @@ struct ControlState
     float look_dy = 0.0f;
     float zoom_delta = 0.0f;
 
+    // --- Barrel roll modifier ---
+    bool roll_modifier = false;
+
     // --- Legacy fields (kept ONLY so client compiles) ---
     float forward = 0.0f;
     float strafe = 0.0f;

@@ -794,11 +794,31 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
         constexpr float MOUSE_SENS = 0.0025f;
+        constexpr float ROLL_SENS = 0.0040f;
 
-        camera_yaw += ctl.look_dx * MOUSE_SENS;
-        drone_yaw += ctl.look_dx * MOUSE_SENS;
+        if (ctl.roll_modifier)
+        {
+            // Barrel roll mode
+            drone_roll += ctl.look_dx * ROLL_SENS;
+        }
+        else
+        {
+            // Normal flight mode
+            camera_yaw += ctl.look_dx * MOUSE_SENS;
+            drone_yaw += ctl.look_dx * MOUSE_SENS;
+        }
 
+        // Pitch always works
         drone_pitch -= ctl.look_dy * MOUSE_SENS;
+
+        // Keep roll sane
+        drone_roll = std::clamp(drone_roll, -1.6f, 1.6f);
+
+        // Auto-level when not rolling
+        if (!ctl.roll_modifier)
+        {
+            drone_roll *= 0.92f;
+        }
 
 
         drone_pitch = std::clamp(drone_pitch, -1.2f, 1.2f);
@@ -1146,8 +1166,9 @@ combat_fx_render(drone_yaw);
         glTranslatef(px, py + idle.y_offset, pz);
 
         glRotatef((drone_yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
-        glRotatef(idle.pitch, 1, 0, 0);
-        glRotatef(idle.roll, 0, 0, 1);
+        glRotatef(drone_pitch * 57.2958f + idle.pitch, 1, 0, 0);
+        glRotatef(drone_roll * 57.2958f + idle.roll, 0, 0, 1);
+
 
 
         glDisable(GL_LIGHTING);
