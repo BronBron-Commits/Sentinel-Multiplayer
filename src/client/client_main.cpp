@@ -798,8 +798,9 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         if (ctl.roll_modifier)
         {
-            // Barrel roll mode
-            drone_roll += ctl.look_dx * ROLL_SENS;
+            // Camera-space roll: left/right always matches screen direction
+            float cam_right_sign = (std::cos(camera_yaw) >= 0.0f) ? 1.0f : -1.0f;
+            drone_roll += ctl.look_dx * ROLL_SENS * cam_right_sign;
         }
         else
         {
@@ -807,6 +808,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
             camera_yaw += ctl.look_dx * MOUSE_SENS;
             drone_yaw += ctl.look_dx * MOUSE_SENS;
         }
+
 
         // Pitch always works
         drone_pitch -= ctl.look_dy * MOUSE_SENS;
@@ -1090,33 +1092,38 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
         // ============================================================
-// SKY (world-space, yaw-only)
-// ============================================================
+        // SKY (camera-space, yaw-only, horizon locked)
+        // ============================================================
+
         glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT);
 
         glDisable(GL_LIGHTING);
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
 
-        // --- PROJECTION already set (perspective) ---
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        // Projection already set (perspective)
+        glPopMatrix();
 
         glMatrixMode(GL_MODELVIEW);
         glPushMatrix();
 
-        // Remove translation
+        // Start from identity (NO camera transform)
         glLoadIdentity();
 
-        // Apply yaw ONLY
+        // Apply ONLY yaw (explicitly cancel pitch & roll)
         float yaw_deg = camera_yaw * 57.2958f;
-        glRotatef(yaw_deg, 0, 1, 0);
+        glRotatef(yaw_deg, 0.0f, 1.0f, 0.0f);
 
-        // Draw sky at origin (large radius implied)
+        // Draw sky
         draw_sky(now * 0.001f);
 
         glPopMatrix();
 
         glDepthMask(GL_TRUE);
         glPopAttrib();
+
 
 
         // ---------- MODELVIEW ----------

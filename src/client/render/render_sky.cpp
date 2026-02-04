@@ -6,6 +6,7 @@
 #include <SDL.h>
 
 #include <cmath>
+#include <algorithm>
 
 #include "client/render_sky.hpp"
 
@@ -248,10 +249,11 @@ void draw_sky(float t) {
             float v = std::fmod(std::sin(b) * 12345.6f, 1.0f);
 
             float theta = u * 6.28318f;
-            float phi = v * (3.14159f * 0.5f);
+            float phi = (v - 0.15f) * (3.14159f * 0.5f);
+
 
             float x = std::sin(phi) * std::cos(theta);
-            float y = std::cos(phi);
+            float y = std::max(std::cos(phi), -0.15f);
             float z = std::sin(phi) * std::sin(theta);
 
             float phase =
