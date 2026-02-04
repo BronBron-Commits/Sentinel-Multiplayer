@@ -11,18 +11,6 @@
 #include "render_sky.hpp"
 
 // ============================================================
-// Tuning
-// ============================================================
-
-static constexpr float STAR_TWINKLE_FREQ = 0.6f;
-static constexpr float STAR_TWINKLE_AMPL = 0.15f;
-
-static constexpr float MILKYWAY_BRIGHTNESS = 0.35f;
-static constexpr float MILKYWAY_WIDTH = 0.22f;
-static constexpr float MILKYWAY_TILT = 0.55f;
-static constexpr float MILKYWAY_CORE_BOOST = 1.8f;
-
-// ============================================================
 // Helpers
 // ============================================================
 
@@ -31,97 +19,123 @@ static inline float clampf(float v, float lo, float hi)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-static inline float mw_noise(float x)
+static inline float lerp(float a, float b, float t)
 {
-    return std::fmod(std::sin(x * 12.9898f) * 43758.5453f, 1.0f);
+    return a + (b - a) * t;
 }
 
 // ============================================================
-// SKY GEOMETRY — FULL SPHERE
+// Atmospheric color model (screen-space)
 // ============================================================
 
-static void draw_sky_sphere(float t)
+static void sky_color(float t, float& r, float& g, float& b)
 {
-    constexpr int   LAT = 48;
-    constexpr int   LON = 96;
-    constexpr float R = 300.0f;
+    // t = 0 bottom, 1 top
+    t = clampf(t, 0.0f, 1.0f);
 
-    for (int i = 0; i < LAT; ++i)
+    // Push saturation toward horizon
+    float h = std::pow(t, 1.25f);
+
+    // === Horizon (deep sunset reds & golds) ===
+    const float low_r = 1.00f;
+    const float low_g = 0.48f;
+    const float low_b = 0.26f;
+
+    // === Mid sky (peach / rose) ===
+    const float mid_r = 0.92f;
+    const float mid_g = 0.58f;
+    const float mid_b = 0.48f;
+
+    // === Zenith (warm cobalt, not dark) ===
+    const float high_r = 0.38f;
+    const float high_g = 0.52f;
+    const float high_b = 0.78f;
+
+    if (h < 0.55f)
     {
-        float v0 = float(i) / LAT;
-        float v1 = float(i + 1) / LAT;
-
-        float phi0 = (v0 - 0.5f) * 3.14159265f; // -pi/2 .. +pi/2
-        float phi1 = (v1 - 0.5f) * 3.14159265f;
-
-        glBegin(GL_TRIANGLE_STRIP);
-
-        for (int j = 0; j <= LON; ++j)
-        {
-            float u = float(j) / LON;
-            float theta = u * 6.2831853f;
-
-            for (float phi : { phi0, phi1 })
-            {
-                float x = std::cos(theta) * std::cos(phi);
-                float y = std::sin(phi);
-                float z = std::sin(theta) * std::cos(phi);
-
-                float h = clampf(y * 0.5f + 0.5f, 0.0f, 1.0f);
-                float haze = std::exp(-h * 3.5f);
-
-                float r = 0.05f + h * 0.12f + haze * 0.18f;
-                float g = 0.08f + h * 0.18f + haze * 0.22f;
-                float b = 0.16f + h * 0.30f + haze * 0.35f;
-
-                glColor3f(r, g, b);
-                glVertex3f(x * R, y * R, z * R);
-            }
-        }
-
-        glEnd();
+        float k = h / 0.55f;
+        r = lerp(low_r, mid_r, k);
+        g = lerp(low_g, mid_g, k);
+        b = lerp(low_b, mid_b, k);
     }
+    else
+    {
+        float k = (h - 0.55f) / 0.45f;
+        r = lerp(mid_r, high_r, k);
+        g = lerp(mid_g, high_g, k);
+        b = lerp(mid_b, high_b, k);
+    }
+
+    // Extra atmospheric bloom near horizon
+    float haze = std::exp(-t * 3.5f);
+    r += haze * 0.25f;
+    g += haze * 0.15f;
+    b += haze * 0.08f;
+
+    r = clampf(r, 0.0f, 1.0f);
+    g = clampf(g, 0.0f, 1.0f);
+    b = clampf(b, 0.0f, 1.0f);
 }
 
 // ============================================================
-// PUBLIC ENTRY
+// Fullscreen sky draw
 // ============================================================
-void draw_sky(
-    float time_seconds,
-    float camera_yaw,
-    float camera_pitch
-)
 
+static void draw_fullscreen_sky()
 {
-    // ------------------------------------------------------------
-    // Isolate GL state
-    // ------------------------------------------------------------
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glBegin(GL_QUADS);
+
+    // Bottom
+    {
+        float r, g, b;
+        sky_color(0.0f, r, g, b);
+        glColor3f(r, g, b);
+        glVertex2f(-1.0f, -1.0f);
+        glVertex2f(1.0f, -1.0f);
+    }
+
+    // Top
+    {
+        float r, g, b;
+        sky_color(1.0f, r, g, b);
+        glColor3f(r, g, b);
+        glVertex2f(1.0f, 1.0f);
+        glVertex2f(-1.0f, 1.0f);
+    }
+
+    glEnd();
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+// ============================================================
+// Public entry
+// ============================================================
+
+void draw_sky(
+    float /*time_seconds*/,
+    float /*camera_yaw*/,
+    float /*camera_pitch*/
+)
+{
     glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT);
 
     glDisable(GL_LIGHTING);
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
-    // ------------------------------------------------------------
-    // Sky transform (rotation ONLY — no translation)
-    // ------------------------------------------------------------
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-
-    // Rotate sky opposite camera orientation
-    glRotatef(-camera_pitch * 57.2958f, 1, 0, 0);
-    glRotatef(-camera_yaw * 57.2958f, 0, 1, 0);
-
-    // ------------------------------------------------------------
-    // Draw geometry
-    // ------------------------------------------------------------
-    draw_sky_sphere(time_seconds);
-
-    // ------------------------------------------------------------
-    // Restore state
-    // ------------------------------------------------------------
-    glPopMatrix();
+    draw_fullscreen_sky();
 
     glDepthMask(GL_TRUE);
     glPopAttrib();
