@@ -60,10 +60,17 @@ static constexpr int   GRID_SIZE = 120;
 static constexpr float GRID_SCALE = 2.0f;
 static constexpr float HEIGHT_GAIN = 8.0f;
 
+// Ground flower tuning
+static constexpr float FLOWER_PATCH_THRESHOLD = 0.82f; // higher = rarer patches
+static constexpr float FLOWER_HEIGHT = 0.35f;
+static constexpr float FLOWER_SIZE = 0.12f;
+static constexpr float FLOWER_MAX_DIST = 85.0f;
+
+
 // Grass tuning (PERFORMANCE CRITICAL)
 static constexpr float GRASS_NEAR_DIST = 40.0f;
-static constexpr float GRASS_FAR_DIST = 100.0f;
-static constexpr float GRASS_HEIGHT = 3.0f;
+static constexpr float GRASS_FAR_DIST = 200.0f;
+static constexpr float GRASS_HEIGHT = 6.0f;
 static constexpr float GRASS_WIDTH = 0.065f;
 static constexpr float GRASS_LOD0_END = 40.0f;  // full
 static constexpr float GRASS_LOD1_END = 75.0f;  // reduced
@@ -126,6 +133,29 @@ static float fbm(float x, float z) {
 static float height_at(float x, float z) {
     return fbm(x, z) * HEIGHT_GAIN;
 }
+
+
+static void flower_color(int seed) {
+    float t = hash(seed * 17, seed * 31);
+
+    // Explicitly non-green pastel palette
+    if (t < 0.20f) {          // soft butter yellow
+        glColor3f(0.95f, 0.90f, 0.55f);
+    }
+    else if (t < 0.40f) {     // peach
+        glColor3f(0.95f, 0.75f, 0.55f);
+    }
+    else if (t < 0.60f) {     // lavender
+        glColor3f(0.82f, 0.74f, 0.92f);
+    }
+    else if (t < 0.80f) {     // sky blue
+        glColor3f(0.70f, 0.82f, 0.92f);
+    }
+    else {                    // warm white
+        glColor3f(0.95f, 0.95f, 0.90f);
+    }
+}
+
 
 
 // ============================================================
@@ -478,6 +508,48 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 classify_zone(wy, terrain_slope(ny), path_distance(wx, wz));
             if (zone != TerrainZone::Grass)
                 continue;
+
+            // ----------------------------------------
+// Flower patches (ground flowers)
+// ----------------------------------------
+            float patch = noise(wx * 0.12f, wz * 0.12f);
+
+            if (patch > FLOWER_PATCH_THRESHOLD && dist < FLOWER_MAX_DIST) {
+
+                int flowers = 2 + int(hash(x, z) * 4); // 2–5 flowers per patch
+
+                for (int f = 0; f < flowers; ++f) {
+
+                    float a = hash(x * 31 + f * 17, z * 23 + f * 11) * 6.28318f;
+                    float r = hash(x * 13 + f * 7, z * 19 + f * 5) * 0.45f;
+
+                    float fx = wx + std::cos(a) * r;
+                    float fz = wz + std::sin(a) * r;
+                    float fy = height_at(fx, fz);
+
+                    flower_color(x * 97 + z * 53 + f * 31);
+
+                    float s = FLOWER_SIZE *
+                        lerp(0.75f, 1.25f, hash(f, x));
+
+                    glBegin(GL_QUADS);
+
+                    // X-facing
+                    glVertex3f(fx - s, fy, fz);
+                    glVertex3f(fx + s, fy, fz);
+                    glVertex3f(fx + s, fy + FLOWER_HEIGHT, fz);
+                    glVertex3f(fx - s, fy + FLOWER_HEIGHT, fz);
+
+                    // Z-facing
+                    glVertex3f(fx, fy, fz - s);
+                    glVertex3f(fx, fy, fz + s);
+                    glVertex3f(fx, fy + FLOWER_HEIGHT, fz + s);
+                    glVertex3f(fx, fy + FLOWER_HEIGHT, fz - s);
+
+                    glEnd();
+                }
+            }
+
 
             float field = grass_field(wx, wz);
 
