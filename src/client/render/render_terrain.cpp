@@ -34,8 +34,9 @@ static float grass_field(float x, float z) {
 
     return field;
 }
-
+static inline float tree_wind(float x, float z, float time);
 static float height_at(float x, float z);
+static inline float flower_wind(float x, float z, float time);
 
 static constexpr float WIND_STRENGTH = 0.18f;
 static constexpr float WIND_FREQ = 0.9f;
@@ -53,6 +54,40 @@ enum class TerrainZone {
 };
 
 // ============================================================
+// Leaf particles (visual only)
+// ============================================================
+
+static constexpr int   LEAF_PARTICLES_PER_TREE = 18;
+static constexpr float LEAF_FALL_RADIUS = 2.2f;
+static constexpr float LEAF_FALL_HEIGHT = 42.0f;
+static constexpr float LEAF_FALL_SPEED = 0.6f;
+static constexpr float LEAF_SIZE = 0.18f;
+static constexpr float LEAF_MAX_DIST = 120.0f;
+
+
+// ============================================================
+// Path butterfly swarms
+// ============================================================
+
+static constexpr int   BUTTERFLIES_PER_SWARM = 5;
+static constexpr float BUTTERFLY_SWARM_SPACING = 10.0f;
+static constexpr float BUTTERFLY_ORBIT_RADIUS = 2.2f;
+static constexpr float BUTTERFLY_HEIGHT = 3.8f;
+static constexpr float BUTTERFLY_SPEED = 0.9f;
+static constexpr float BUTTERFLY_SIZE = 0.25f;
+static constexpr float BUTTERFLY_MAX_DIST = 120.0f;
+
+
+// ============================================================
+// Terrain LOD distances
+// ============================================================
+
+static constexpr float TERRAIN_NEAR_END = 160.0f;
+static constexpr float TERRAIN_MID_END = 320.0f;
+static constexpr float TERRAIN_FAR_END = 520.0f;
+
+
+// ============================================================
 // Terrain tuning
 // ============================================================
 
@@ -60,11 +95,7 @@ static constexpr int   GRID_SIZE = 120;
 static constexpr float GRID_SCALE = 2.0f;
 static constexpr float HEIGHT_GAIN = 8.0f;
 
-// Ground flower tuning
-static constexpr float FLOWER_PATCH_THRESHOLD = 0.82f; // higher = rarer patches
-static constexpr float FLOWER_HEIGHT = 0.35f;
-static constexpr float FLOWER_SIZE = 0.12f;
-static constexpr float FLOWER_MAX_DIST = 85.0f;
+
 
 
 // Grass tuning (PERFORMANCE CRITICAL)
@@ -134,27 +165,41 @@ static float height_at(float x, float z) {
     return fbm(x, z) * HEIGHT_GAIN;
 }
 
-
-static void flower_color(int seed) {
-    float t = hash(seed * 17, seed * 31);
-
-    // Explicitly non-green pastel palette
-    if (t < 0.20f) {          // soft butter yellow
-        glColor3f(0.95f, 0.90f, 0.55f);
-    }
-    else if (t < 0.40f) {     // peach
-        glColor3f(0.95f, 0.75f, 0.55f);
-    }
-    else if (t < 0.60f) {     // lavender
-        glColor3f(0.82f, 0.74f, 0.92f);
-    }
-    else if (t < 0.80f) {     // sky blue
-        glColor3f(0.70f, 0.82f, 0.92f);
-    }
-    else {                    // warm white
-        glColor3f(0.95f, 0.95f, 0.90f);
-    }
+static inline float leaf_wind(float x, float z, float time) {
+    return
+        std::sin(time * 0.45f + x * 0.08f + z * 0.06f) * 0.4f +
+        std::sin(time * 0.90f + x * 0.18f) * 0.25f;
 }
+
+static inline float tree_wind(float x, float z, float time) {
+    return
+        std::sin(time * 0.35f + x * 0.04f + z * 0.06f) * 0.6f +
+        std::sin(time * 0.75f + x * 0.11f) * 0.4f;
+}
+
+static inline float flower_wind(float x, float z, float time) {
+    return
+        std::sin(time * 1.8f + x * 0.22f + z * 0.19f) * 0.8f +
+        std::sin(time * 3.1f + x * 0.47f) * 0.4f;
+}
+
+static void leaf_color(int seed) {
+    float t = hash(seed * 37, seed * 53);
+
+    if (t < 0.4f)      glColor3f(0.95f, 0.70f, 0.25f); // golden
+    else if (t < 0.7f) glColor3f(0.90f, 0.45f, 0.18f); // orange
+    else               glColor3f(0.75f, 0.25f, 0.15f); // red
+}
+
+static void butterfly_color(int seed) {
+    float t = hash(seed * 11, seed * 29);
+
+    if (t < 0.33f)      glColor3f(0.95f, 0.65f, 0.15f); // monarch orange
+    else if (t < 0.66f) glColor3f(0.65f, 0.75f, 0.95f); // pale blue
+    else                glColor3f(0.95f, 0.95f, 0.75f); // soft yellow
+}
+
+
 
 
 
@@ -501,6 +546,9 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 continue;
 
             float wy = height_at(wx, wz);
+
+
+
             float nx, ny, nz;
             terrain_normal(wx, wz, nx, ny, nz);
 
@@ -509,49 +557,10 @@ static void draw_grass(float cam_x, float cam_z, float time)
             if (zone != TerrainZone::Grass)
                 continue;
 
-            // ----------------------------------------
-// Flower patches (ground flowers)
-// ----------------------------------------
-            float patch = noise(wx * 0.12f, wz * 0.12f);
-
-            if (patch > FLOWER_PATCH_THRESHOLD && dist < FLOWER_MAX_DIST) {
-
-                int flowers = 2 + int(hash(x, z) * 4); // 2–5 flowers per patch
-
-                for (int f = 0; f < flowers; ++f) {
-
-                    float a = hash(x * 31 + f * 17, z * 23 + f * 11) * 6.28318f;
-                    float r = hash(x * 13 + f * 7, z * 19 + f * 5) * 0.45f;
-
-                    float fx = wx + std::cos(a) * r;
-                    float fz = wz + std::sin(a) * r;
-                    float fy = height_at(fx, fz);
-
-                    flower_color(x * 97 + z * 53 + f * 31);
-
-                    float s = FLOWER_SIZE *
-                        lerp(0.75f, 1.25f, hash(f, x));
-
-                    glBegin(GL_QUADS);
-
-                    // X-facing
-                    glVertex3f(fx - s, fy, fz);
-                    glVertex3f(fx + s, fy, fz);
-                    glVertex3f(fx + s, fy + FLOWER_HEIGHT, fz);
-                    glVertex3f(fx - s, fy + FLOWER_HEIGHT, fz);
-
-                    // Z-facing
-                    glVertex3f(fx, fy, fz - s);
-                    glVertex3f(fx, fy, fz + s);
-                    glVertex3f(fx, fy + FLOWER_HEIGHT, fz + s);
-                    glVertex3f(fx, fy + FLOWER_HEIGHT, fz - s);
-
-                    glEnd();
-                }
-            }
 
 
             float field = grass_field(wx, wz);
+
 
             // Kill grass completely in bare patches
             if (field < 0.22f)
@@ -587,10 +596,15 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 float blade_phase =
                     hash(x + i * 19, z + i * 23) * 6.28318f;
 
+                float global_wind =
+                    std::sin(time * 0.35f + wx * 0.04f + wz * 0.04f);
+
+                float local_gust =
+                    noise(px * WIND_SCALE + time * 0.18f,
+                        pz * WIND_SCALE + time * 0.14f);
+
                 float wind =
-                    std::sin(time * WIND_FREQ +
-                        blade_phase +
-                        noise(px * WIND_SCALE, pz * WIND_SCALE) * 3.0f)
+                    (global_wind * 0.7f + local_gust * 0.6f)
                     * WIND_STRENGTH;
 
                 float h =
@@ -604,7 +618,12 @@ static void draw_grass(float cam_x, float cam_z, float time)
                     noise(px * 0.25f + time * 0.15f,
                         pz * 0.25f + time * 0.12f);
 
-                float bend = (wind + gust * 0.6f) * 1.35f;
+                float height_factor = h / GRASS_HEIGHT;
+
+                float bend =
+                    (wind + gust * 0.6f)
+                    * lerp(0.8f, 2.2f, height_factor);
+
 
                 // X-facing quad
                 glTexCoord2f(0, 0); glVertex3f(px - GRASS_WIDTH, wy, pz);
@@ -627,18 +646,133 @@ static void draw_grass(float cam_x, float cam_z, float time)
     glEnable(GL_LIGHTING);
 }
 
+static void draw_path_butterflies(
+    float cam_x,
+    float cam_z,
+    float time)
+{
+    int base_z = int(std::floor(cam_z / BUTTERFLY_SWARM_SPACING));
+    int swarm_radius = 8;
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.15f);
+
+    for (int i = base_z - swarm_radius; i <= base_z + swarm_radius; ++i) {
+        // --- Randomly decide if this segment has butterflies ---
+        float spawn = hash(i * 41, 73);
+
+        // ~45% of path segments have NO butterflies
+        if (spawn < 0.45f)
+            continue;
+
+        float zc = i * BUTTERFLY_SWARM_SPACING;
+        float path_jitter = (hash(i * 17, 91) - 0.5f) * 4.0f;
+        float xc = std::sin(zc * 0.05f) * 10.0f + path_jitter;
+
+
+        float dx = xc - cam_x;
+        float dz = zc - cam_z;
+        float dist = std::sqrt(dx * dx + dz * dz);
+        if (dist > BUTTERFLY_MAX_DIST)
+            continue;
+
+        int seed = i * 97;
+
+        int count =
+            (spawn > 0.90f) ? 7 :   // rare big swarm
+            (spawn > 0.70f) ? 4 :   // medium
+            (spawn > 0.55f) ? 2 :   // small
+            1;   // lone butterfly
+
+        for (int b = 0; b < count; ++b) {
+
+
+            float phase =
+                time * BUTTERFLY_SPEED +
+                hash(seed + b * 17, 31) * 6.28318f;
+
+            float orbit =
+                BUTTERFLY_ORBIT_RADIUS *
+                lerp(0.6f, 1.2f, hash(seed, b * 13));
+
+            float bx =
+                xc +
+                std::cos(phase + b) * orbit +
+                std::sin(time * 0.7f + b) * 0.6f;
+
+            float bz =
+                zc +
+                std::sin(phase * 1.3f + b) * orbit;
+
+            float ground = height_at(bx, bz);
+
+            float by =
+                ground +
+                BUTTERFLY_HEIGHT *
+                lerp(0.6f, 1.3f, hash(seed, b * 29)) +
+                std::sin(phase * 2.1f + b) * 0.8f;
+
+
+            float size =
+                BUTTERFLY_SIZE *
+                lerp(0.8f, 1.3f, hash(b * 11, seed));
+
+            butterfly_color(seed + b * 53);
+
+            glBegin(GL_QUADS);
+
+            float flap = std::sin(phase * 12.0f) * size * 0.9f;
+
+            // X-facing
+            glVertex3f(bx - size - flap, by, bz);
+            glVertex3f(bx + size + flap, by, bz);
+            glVertex3f(bx + size + flap, by + size * 0.6f, bz);
+            glVertex3f(bx - size - flap, by + size * 0.6f, bz);
+
+            // Z-facing (cross)
+            glVertex3f(bx, by, bz - size);
+            glVertex3f(bx, by, bz + size);
+            glVertex3f(bx, by + size * 0.6f, bz + size);
+            glVertex3f(bx, by + size * 0.6f, bz - size);
+
+            glEnd();
+        }
+    }
+
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_LIGHTING);
+}
+
+
+
 
 // ============================================================
 // Render
 // ============================================================
+static void draw_falling_leaves(
+    float tree_x,
+    float tree_z,
+    float trunk_h,
+    float time,
+    float cam_x,
+    float cam_z);
 
-static void draw_tree(float x, float z, float time) {
+static void draw_tree(
+    float x,
+    float z,
+    float time,
+    float cam_x,
+    float cam_z)
+{
+
 
     // Keep trees away from path
     if (path_distance(x, z) < 4.5f)
         return;
 
     float y = height_at(x, z);
+    float wind = tree_wind(x, z, time);
 
     float nx, ny, nz;
     terrain_normal(x, z, nx, ny, nz);
@@ -661,6 +795,7 @@ static void draw_tree(float x, float z, float time) {
     // ------------------------------
     const float trunk_h = 40.5f * height_variation;
     const float trunk_r = 0.32f * height_variation;
+    float trunk_sway = wind * trunk_h * 0.006f;
 
     glColor3f(0.42f, 0.30f, 0.18f);
 
@@ -672,7 +807,12 @@ static void draw_tree(float x, float z, float time) {
 
         glNormal3f(ca, 0.0f, sa);
         glVertex3f(x + ca * trunk_r, y, z + sa * trunk_r);
-        glVertex3f(x + ca * trunk_r * 0.85f, y + trunk_h, z + sa * trunk_r * 0.85f);
+        glVertex3f(
+            x + ca * trunk_r * 0.85f + trunk_sway,
+            y + trunk_h,
+            z + sa * trunk_r * 0.85f
+        );
+
     }
     glEnd();
 
@@ -709,6 +849,8 @@ static void draw_tree(float x, float z, float time) {
         float ex = x + dx * branch_len;
         float ez = z + dz * branch_len;
         float ey = bh + branch_len * tilt;
+        float branch_wind =
+            wind * branch_len * lerp(0.25f, 0.45f, t);
 
         // -------------------------------------------------
 // Branch foliage (prevents bare branches)
@@ -727,6 +869,13 @@ static void draw_tree(float x, float z, float time) {
                 float lz = ez + std::sin(la) * lr;
                 float ly = ey + lh;
 
+                // Blossom wind (branch sway + flutter)
+                float fw = flower_wind(lx, lz, time);
+
+                float blossom_sway =
+                    branch_wind * 0.65f +   // follow branch
+                    fw * trunk_h * 0.015f;  // flutter
+
                 float flower_size =
                     trunk_h * lerp(0.018f, 0.028f, hash(k * 7, i * 11));
 
@@ -739,20 +888,21 @@ static void draw_tree(float x, float z, float time) {
                     (0.62f) * tint
                 );
 
-
                 glBegin(GL_QUADS);
 
                 // X-facing
-                glVertex3f(lx - flower_size, ly - flower_size * 0.5f, lz);
-                glVertex3f(lx + flower_size, ly - flower_size * 0.5f, lz);
-                glVertex3f(lx + flower_size, ly + flower_size * 0.5f, lz);
-                glVertex3f(lx - flower_size, ly + flower_size * 0.5f, lz);
+                glVertex3f(lx - flower_size + blossom_sway, ly - flower_size * 0.5f, lz);
+                glVertex3f(lx + flower_size + blossom_sway, ly - flower_size * 0.5f, lz);
+                glVertex3f(lx + flower_size + blossom_sway, ly + flower_size * 0.5f, lz);
+                glVertex3f(lx - flower_size + blossom_sway, ly + flower_size * 0.5f, lz);
+
 
                 // Z-facing
-                glVertex3f(lx, ly - flower_size * 0.5f, lz - flower_size);
-                glVertex3f(lx, ly - flower_size * 0.5f, lz + flower_size);
-                glVertex3f(lx, ly + flower_size * 0.5f, lz + flower_size);
-                glVertex3f(lx, ly + flower_size * 0.5f, lz - flower_size);
+                glVertex3f(lx, ly - flower_size * 0.5f, lz - flower_size + blossom_sway);
+                glVertex3f(lx, ly - flower_size * 0.5f, lz + flower_size + blossom_sway);
+                glVertex3f(lx, ly + flower_size * 0.5f, lz + flower_size + blossom_sway);
+                glVertex3f(lx, ly + flower_size * 0.5f, lz - flower_size + blossom_sway);
+
 
 
                 glEnd();
@@ -773,6 +923,7 @@ static void draw_tree(float x, float z, float time) {
 
         glEnd();
     }
+
 
 
     // ------------------------------
@@ -804,16 +955,19 @@ static void draw_tree(float x, float z, float time) {
         float theta = ha * 6.28318f;
         float radius = CANOPY_R * (0.35f + hb * 0.65f);
         float height = CANOPY_BASE + hb * trunk_h * 0.35f;
+        float canopy_wind =
+            wind *
+            trunk_h *
+            lerp(0.020f, 0.045f, hb);
 
 
 
-        float sway =
-            std::sin(time * 0.7f + theta + x * 0.1f + z * 0.1f)
-            * 0.15f * (0.5f + hb);
 
-        float cx = x + std::cos(theta) * radius + sway;
+
+        float cx = x + std::cos(theta) * radius + canopy_wind;
         float cy = y + height;
-        float cz = z + std::sin(theta) * radius;
+        float cz = z + std::sin(theta) * radius + canopy_wind * 0.6f;
+
 
         // Pull some clusters inward to fill canopy volume
         if (hb > 0.4f) {
@@ -857,14 +1011,130 @@ static void draw_tree(float x, float z, float time) {
     glDisable(GL_ALPHA_TEST);
     glEnable(GL_LIGHTING);
 
+    // -------- Falling leaves --------
+    draw_falling_leaves(
+        x,
+        z,
+        trunk_h,
+        time,
+        cam_x,
+        cam_z
+    );
 
 }
 
+static void draw_falling_leaves(
+    float tree_x,
+    float tree_z,
+    float trunk_h,
+    float time,
+    float cam_x,
+    float cam_z)
+{
+    float dx = tree_x - cam_x;
+    float dz = tree_z - cam_z;
+    float dist = std::sqrt(dx * dx + dz * dz);
+    if (dist > LEAF_MAX_DIST)
+        return;
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.15f);
+
+    for (int i = 0; i < LEAF_PARTICLES_PER_TREE; ++i) {
+
+        // Stable seed per tree + leaf
+        int seed = int(tree_x * 13 + tree_z * 17) + i * 31;
+
+        float phase = hash(seed, 19) * 6.28318f;
+        float fall_offset = hash(seed, 97) * LEAF_FALL_HEIGHT;
+
+        float t = std::fmod(time * LEAF_FALL_SPEED + fall_offset, LEAF_FALL_HEIGHT);
+
+        float wx =
+            tree_x +
+            std::cos(phase) * LEAF_FALL_RADIUS +
+            leaf_wind(tree_x, tree_z, time) * 1.2f;
+
+        float wz =
+            tree_z +
+            std::sin(phase) * LEAF_FALL_RADIUS +
+            leaf_wind(tree_x + 13.0f, tree_z + 7.0f, time) * 0.8f;
+
+        float wy =
+            height_at(tree_x, tree_z) +
+            trunk_h * 0.85f -
+            t;
+
+        // Kill leaves when they reach ground
+        if (wy < height_at(wx, wz))
+            continue;
+
+        float size =
+            LEAF_SIZE *
+            lerp(0.6f, 1.2f, hash(seed, 53));
+
+        leaf_color(seed);
+
+        glBegin(GL_QUADS);
+
+        // X-facing
+        glVertex3f(wx - size, wy, wz);
+        glVertex3f(wx + size, wy, wz);
+        glVertex3f(wx + size, wy + size * 0.6f, wz);
+        glVertex3f(wx - size, wy + size * 0.6f, wz);
+
+        // Z-facing
+        glVertex3f(wx, wy, wz - size);
+        glVertex3f(wx, wy, wz + size);
+        glVertex3f(wx, wy + size * 0.6f, wz + size);
+        glVertex3f(wx, wy + size * 0.6f, wz - size);
+
+        glEnd();
+    }
+
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_LIGHTING);
+}
+
+static void draw_tree_far_billboard(float x, float z, float fade) {
+    float y = height_at(x, z);
+    float h = 22.0f;
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.25f);
+
+    glColor4f(0.85f, 0.75f, 0.55f, fade);
+
+    glBegin(GL_QUADS);
+
+    // X-facing
+    glVertex3f(x - 1.4f, y, z);
+    glVertex3f(x + 1.4f, y, z);
+    glVertex3f(x + 1.4f, y + h, z);
+    glVertex3f(x - 1.4f, y + h, z);
+
+    // Z-facing
+    glVertex3f(x, y, z - 1.4f);
+    glVertex3f(x, y, z + 1.4f);
+    glVertex3f(x, y + h, z + 1.4f);
+    glVertex3f(x, y + h, z - 1.4f);
+
+    glEnd();
+
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_LIGHTING);
+}
+
+
+
 static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
-    constexpr int   TREE_RADIUS = 60;     // tiles
-    constexpr float TREE_FADE_START = 160.0f;
-    constexpr float TREE_FADE_END = 220.0f;
+    constexpr int   TREE_RADIUS = 120;        // double reach
+    constexpr float TREE_NEAR_END = 120.0f;   // full detail
+    constexpr float TREE_MID_END = 260.0f;   // cheap geometry
+    constexpr float TREE_FAR_END = 420.0f;   // billboard only
 
 
     int cx = stable_cell(anchor_x);
@@ -882,7 +1152,7 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
             float dist = std::sqrt(dx * dx + dz * dz);
 
             // Hard distance cull
-            if (dist > TREE_FADE_END)
+            if (dist > TREE_FAR_END)
                 continue;
 
             // Density (world-stable)
@@ -896,15 +1166,35 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
             if (path_distance(wx, wz) < 4.5f)
                 continue;
 
-            // Smooth fade (no pop)
-            float fade = 1.0f;
-            if (dist > TREE_FADE_START) {
-                fade = 1.0f - (dist - TREE_FADE_START) /
-                    (TREE_FADE_END - TREE_FADE_START);
+            // =====================
+            // LOD selection
+            // =====================
+
+            if (dist < TREE_NEAR_END) {
+
+                // Full tree
+                draw_tree(wx, wz, time, anchor_x, anchor_z);
+
+            }
+            else if (dist < TREE_MID_END) {
+
+                // Mid LOD: reduced density
+                if (hash(x * 11, z * 17) < 0.65f)
+                    continue;
+
+                draw_tree(wx, wz, time, anchor_x, anchor_z);
+
+            }
+            else {
+
+                // Far LOD: billboard only
+                float fade =
+                    1.0f - (dist - TREE_MID_END) /
+                    (TREE_FAR_END - TREE_MID_END);
+
+                draw_tree_far_billboard(wx, wz, std::clamp(fade, 0.0f, 1.0f));
             }
 
-            glColor4f(1.0f, 1.0f, 1.0f, fade);
-            draw_tree(wx, wz, time);
         }
     }
 }
@@ -954,55 +1244,84 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
         int base_x = int(std::floor(cam_x / GRID_SCALE));
         int base_z = int(std::floor(cam_z / GRID_SCALE));
 
-        for (int z = base_z - GRID_SIZE; z < base_z + GRID_SIZE; ++z) {
+        const int TERRAIN_RADIUS = GRID_SIZE * 2;
 
-            glBegin(GL_TRIANGLE_STRIP);
 
-            for (int x = base_x - GRID_SIZE; x <= base_x + GRID_SIZE; ++x) {
-                for (int dz = 0; dz <= 1; ++dz) {
+            for (int z = base_z - TERRAIN_RADIUS; z < base_z + TERRAIN_RADIUS; ++z) {
 
-                    float jx, jz;
-                    vertex_jitter(x, z + dz, jx, jz);
+                // ---------- ROW LOD (DECLARE ONCE PER ROW) ----------
+                float wz_center = (z + 0.5f) * GRID_SCALE;
+                float dz_cam = wz_center - cam_z;
+                float row_dist = std::fabs(dz_cam);
 
-                    float wx = (x + jx) * GRID_SCALE;
-                    float wz = (z + dz + jz) * GRID_SCALE;
-                    float wy = height_at(wx, wz);
+                int step = 1;
+                if (row_dist > TERRAIN_NEAR_END) step = 2;
+                if (row_dist > TERRAIN_MID_END)  step = 4;
+                if (row_dist > TERRAIN_FAR_END)  continue;
 
-                    float dist = path_distance(wx, wz);
-                    if (dist < 2.5f)
-                        wy -= (2.5f - dist) * 0.6f;
+                glBegin(GL_TRIANGLE_STRIP);
 
-                    float nx, ny, nz;
-                    terrain_normal(wx, wz, nx, ny, nz);
+                for (int x = base_x - TERRAIN_RADIUS;
+                    x <= base_x + TERRAIN_RADIUS;
+                    x += step) {
 
-                    float slope = terrain_slope(ny);
-                    TerrainZone zone = classify_zone(wy, slope, dist);
+                    // ---------- COLUMN DISTANCE (DECLARE ONCE PER COLUMN) ----------
+                    float wx_center = (x + 0.5f) * GRID_SCALE;
+                    float dx_cam = wx_center - cam_x;
+                    float dist_cam = std::sqrt(dx_cam * dx_cam + dz_cam * dz_cam);
 
-                    // Soft blend near dirt path
-                    float dirt_blend = smooth_zone(dist - 2.0f, 2.5f);
-                    float rock_blend = smooth_zone(slope - 0.55f, 0.15f);
+                    for (int dz = 0; dz <= 1; ++dz) {
 
-                    // Base color
-                    set_zone_color(zone, wy, slope, wx, wz);
+                        float jx, jz;
+                        vertex_jitter(x, z + dz, jx, jz);
 
-                    // Dirt tint overlay
-                    if (dirt_blend < 1.0f) {
-                        glColor3f(
-                            lerp(0.42f, 0.30f, dirt_blend),
-                            lerp(0.34f, 0.26f, dirt_blend),
-                            lerp(0.22f, 0.18f, dirt_blend)
-                        );
+                        float wx = (x + jx) * GRID_SCALE;
+                        float wz = (z + dz + jz) * GRID_SCALE;
+
+                        float wy = height_at(wx, wz);
+
+                        // ---------- HEIGHT LOD ----------
+                        if (dist_cam > TERRAIN_MID_END) {
+                            float coarse = height_at(
+                                std::floor(wx * 0.25f) * 4.0f,
+                                std::floor(wz * 0.25f) * 4.0f
+                            );
+                            wy = lerp(wy, coarse, 0.65f);
+                        }
+
+                        float dist = path_distance(wx, wz);
+                        if (dist < 2.5f)
+                            wy -= (2.5f - dist) * 0.6f;
+
+                        // ---------- NORMAL LOD ----------
+                        float nx = 0.0f, ny = 1.0f, nz = 0.0f;
+                        if (dist_cam < TERRAIN_MID_END) {
+                            terrain_normal(wx, wz, nx, ny, nz);
+                        }
+
+                        float slope = terrain_slope(ny);
+                        TerrainZone zone = classify_zone(wy, slope, dist);
+
+                        set_zone_color(zone, wy, slope, wx, wz);
+
+                        float dirt_blend = smooth_zone(dist - 2.0f, 2.5f);
+                        if (dirt_blend < 1.0f) {
+                            glColor3f(
+                                lerp(0.42f, 0.30f, dirt_blend),
+                                lerp(0.34f, 0.26f, dirt_blend),
+                                lerp(0.22f, 0.18f, dirt_blend)
+                            );
+                        }
+
+                        glNormal3f(nx, ny, nz);
+                        glVertex3f(wx, wy, wz);
                     }
-
-
-                    glNormal3f(nx, ny, nz);
-                    glVertex3f(wx, wy, wz);
                 }
+
+                glEnd();
             }
 
-            glEnd();
-        }
-
+        
 
         // -------- TREE PASS --------
 
@@ -1013,6 +1332,8 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
             // -------- GRASS PASS --------
             draw_grass(cam_x, cam_z, time);
+            // -------- BUTTERFLIES --------
+            draw_path_butterflies(cam_x, cam_z, time);
 
         glDisable(GL_FOG);
         glEnable(GL_LIGHTING);
