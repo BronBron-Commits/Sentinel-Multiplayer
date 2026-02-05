@@ -200,6 +200,49 @@ static void butterfly_color(int seed) {
 }
 
 
+enum class CanopyColor {
+    Gold,
+    Purple,
+    Red
+};
+
+static inline CanopyColor pick_canopy_color(float x, float z) {
+    // World-stable per-tree choice
+    float t = hash((int)(x * 37), (int)(z * 53));
+
+    if (t < 0.60f)      return CanopyColor::Gold;   // majority
+    else if (t < 0.82f) return CanopyColor::Purple; // accent
+    else                return CanopyColor::Red;    // rare
+}
+
+static inline void set_canopy_color(CanopyColor c, float tint) {
+    switch (c) {
+    default:
+    case CanopyColor::Gold:
+        glColor3f(
+            1.00f * tint,
+            0.78f * tint,
+            0.48f * tint
+        );
+        break;
+
+    case CanopyColor::Purple:
+        glColor3f(
+            0.72f * tint,
+            0.38f * tint,
+            0.85f * tint
+        );
+        break;
+
+    case CanopyColor::Red:
+        glColor3f(
+            0.90f * tint,
+            0.28f * tint,
+            0.22f * tint
+        );
+        break;
+    }
+}
 
 
 
@@ -782,6 +825,12 @@ static void draw_tree(
         return;
 
     // -----------------------------------------
+    // World-stable canopy color (PER TREE)
+    // -----------------------------------------
+    CanopyColor canopy_color = pick_canopy_color(x, z);
+
+
+    // -----------------------------------------
 // World-stable height variation (PER TREE)
 // -----------------------------------------
     float height_variation =
@@ -983,11 +1032,8 @@ static void draw_tree(
 
         float tint = 0.85f + hb * 0.15f;
 
-        glColor3f(
-            (1.00f)* tint,   // warm yellow
-            (0.78f)* tint,   // soft orange
-            (0.48f)* tint    // hint of peach
-        );
+        set_canopy_color(canopy_color, tint);
+
 
 
 
@@ -1101,11 +1147,23 @@ static void draw_tree_far_billboard(float x, float z, float fade) {
     float y = height_at(x, z);
     float h = 22.0f;
 
+    CanopyColor c = pick_canopy_color(x, z);
+
     glDisable(GL_LIGHTING);
     glEnable(GL_ALPHA_TEST);
     glAlphaFunc(GL_GREATER, 0.25f);
 
-    glColor4f(0.85f, 0.75f, 0.55f, fade);
+    switch (c) {
+    case CanopyColor::Purple:
+        glColor4f(0.70f, 0.40f, 0.85f, fade);
+        break;
+    case CanopyColor::Red:
+        glColor4f(0.85f, 0.35f, 0.25f, fade);
+        break;
+    default:
+        glColor4f(0.85f, 0.75f, 0.55f, fade);
+        break;
+    }
 
     glBegin(GL_QUADS);
 
@@ -1126,6 +1184,7 @@ static void draw_tree_far_billboard(float x, float z, float fade) {
     glDisable(GL_ALPHA_TEST);
     glEnable(GL_LIGHTING);
 }
+
 
 
 
