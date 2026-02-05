@@ -159,7 +159,7 @@ static void init_stars()
 
         if (s.dy < -0.15f) continue;
 
-        s.base = 0.6f + frand(seed) * 0.4f;
+        s.base = 0.4f + frand(seed) * 1.2f;
         s.twinkle = 1.0f + frand(seed) * 4.0f;
 
         g_stars.push_back(s);
@@ -178,7 +178,7 @@ static void draw_stars(float time_seconds, float yaw, float pitch)
     glDisable(GL_ALPHA_TEST);
 
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive bloom
 
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -188,7 +188,43 @@ static void draw_stars(float time_seconds, float yaw, float pitch)
     glPushMatrix();
     glLoadIdentity();
 
-    glPointSize(5.0f);
+    // =========================================================
+    // HALO PASS (soft glow)
+    // =========================================================
+    glPointSize(10.0f);
+    glBegin(GL_POINTS);
+
+    for (const Star& s : g_stars)
+    {
+        float x = s.dx, y = s.dy, z = s.dz;
+        rotate_yaw_pitch(x, y, z, yaw, pitch);
+        if (z <= 0.0f) continue;
+
+        float sx = x / z;
+        float sy = y / z;
+
+        float tw = std::sin(time_seconds * s.twinkle + x * 17.0f + y * 29.0f);
+        tw = 0.5f + 0.5f * tw;
+
+        float depth = clampf((y + 1.0f) * 0.5f, 0.0f, 1.0f);
+        float glow = s.base * lerp(0.3f, 0.8f, tw) * depth;
+
+        glColor4f(
+            glow * 0.6f,
+            glow * 0.6f,
+            glow * 1.0f,
+            glow * 0.35f
+        );
+
+        glVertex2f(sx, sy);
+    }
+
+    glEnd();
+
+    // =========================================================
+    // CORE PASS (sharp star)
+    // =========================================================
+    glPointSize(3.0f);
     glBegin(GL_POINTS);
 
     for (const Star& s : g_stars)
@@ -203,9 +239,16 @@ static void draw_stars(float time_seconds, float yaw, float pitch)
         float tw = std::sin(time_seconds * s.twinkle + x * 19.0f + y * 23.0f);
         tw = 0.5f + 0.5f * tw;
 
-        float b = s.base * lerp(0.8f, 1.6f, tw);
+        float depth = clampf((y + 1.0f) * 0.5f, 0.0f, 1.0f);
+        float b = s.base * lerp(0.8f, 1.8f, tw) * depth;
 
-        glColor4f(b, b, b * 1.2f, b);
+        glColor4f(
+            b,
+            b,
+            b * 1.25f,
+            b
+        );
+
         glVertex2f(sx, sy);
     }
 
@@ -216,6 +259,7 @@ static void draw_stars(float time_seconds, float yaw, float pitch)
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
+
 
 // ============================================================
 // Public entry
