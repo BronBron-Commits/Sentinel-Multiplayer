@@ -23,6 +23,8 @@
 #include <cstdint>
 #include <unordered_map>
 
+#include "drone/drone_controller.hpp"
+
 #include "render/render_terrain.hpp"
 #include "render/render_drone_shader.hpp"
 #include "render/render_sky.hpp"
@@ -47,7 +49,7 @@
 #include "util/math_util.hpp"
 
 
-static float drone_roll = 0.0f;
+
 
 
 // ------------------------------------------------------------
@@ -70,8 +72,11 @@ struct Camera;
 
 static bool prev_space = false;
 
-static bool boost_active = false;
 
+// ------------------------------------------------------------
+// Drone state (MODULARIZED)
+// ------------------------------------------------------------
+static DroneState drone{};
 
 static void get_billboard_axes(
     const Camera& cam,
@@ -122,8 +127,7 @@ constexpr float UFO_DRIFT_DAMPING = 0.96f;  // floatiness
 // ------------------------------------------------------------
 // Tuning (VISUAL FIDELITY MODE)
 // ------------------------------------------------------------
-constexpr float MOVE_SPEED     = 9.0f;
-constexpr float STRAFE_SPEED   = 8.0f;
+
 
 
 constexpr float CAM_BACK = 8.0f;
@@ -686,14 +690,12 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     ReplicationClient replication;
     uint32_t local_player_id = 0;
 
-    float px = 0.0f, py = 1.5f, pz = 0.0f;
-    float drone_yaw = 0.0f;
-    float drone_pitch = 0.0f;
 
 
 
 
     Camera cam{};
+    drone_init(drone);
 
     // Track which players are "ready to render"
     std::unordered_map<uint32_t, bool> has_remote;
@@ -796,118 +798,11 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         cam_distance = std::clamp(cam_distance, CAM_MIN, CAM_MAX);
 
 
-        // Original: 0.0025f, 0.0040f
-        constexpr float MOUSE_SENS = 0.00180625f; // 0.0025 * 0.7225
-        constexpr float ROLL_SENS = 0.00289f;    // 0.0040 * 0.7225
-
-        if (ctl.roll_modifier)
-        {
-            // Camera-space roll: left/right always matches screen direction
-            float cam_right_sign = (std::cos(camera_yaw) >= 0.0f) ? 1.0f : -1.0f;
-            drone_roll += ctl.look_dx * ROLL_SENS * cam_right_sign;
-        }
-        else
-        {
-            // Normal flight mode
-            camera_yaw += ctl.look_dx * MOUSE_SENS;
-            drone_yaw += ctl.look_dx * MOUSE_SENS;
-        }
-
-
-        // Pitch always works
-        drone_pitch -= ctl.look_dy * MOUSE_SENS;
-
-        // Keep roll sane
-        drone_roll = std::clamp(drone_roll, -1.6f, 1.6f);
-
-        // Auto-level when not rolling
-        if (!ctl.roll_modifier)
-        {
-            drone_roll *= 0.92f;
-        }
-
-
-        drone_pitch = std::clamp(drone_pitch, -1.2f, 1.2f);
-
-        controls_end_frame(); // clears look_dx / look_dy
-
-        // Clamp pitch so we don’t flip
-        drone_pitch = std::clamp(drone_pitch, -1.2f, 1.2f);
-
-        // clamp pitch (no flipping)
-        if (drone_pitch > 1.2f) drone_pitch = 1.2f;
-        if (drone_pitch < -1.2f) drone_pitch = -1.2f;
-
-
-        drone_yaw = camera_yaw;
-
-
-        float forward = ctl.forward;
-        float strafe = ctl.strafe;
-
-        bool fire = ctl.fire;
-        boost_active = ctl.boost;
-
-        combat_fx_handle_fire(
-            ctl.fire,
-            prev_space,
-            px, py, pz,
-            drone_yaw
-        );
-
-        prev_space = ctl.fire;
-
-
-        bool drone_moving =
-            std::fabs(forward) > 0.01f ||
-            std::fabs(strafe) > 0.01f;
-
-
-        audio_on_drone_move(drone_moving, boost_active);
+        drone_update(drone, ctl, dt, camera_yaw);
+        controls_end_frame();
 
 
 
-
-
-
-        // ------------------------------------------------------------
-        // THRUST-BASED FLIGHT (CAMERA DIRECTION DRIVES MOVEMENT)
-        // ------------------------------------------------------------
-        float speed_mul = boost_active ? 2.0f : 1.0f;
-
-        // Camera forward vector (includes pitch)
-        float fwd_x = std::cos(drone_yaw) * std::cos(drone_pitch);
-        float fwd_y = std::sin(drone_pitch);
-        float fwd_z = std::sin(drone_yaw) * std::cos(drone_pitch);
-
-        // Camera right vector (yaw only)
-        float right_x = -std::sin(camera_yaw);
-        float right_z = std::cos(camera_yaw);
-
-        // Forward / backward thrust ONLY
-        if (std::fabs(forward) > 0.001f)
-        {
-            px += fwd_x * forward * MOVE_SPEED * speed_mul * dt;
-            py += fwd_y * forward * MOVE_SPEED * speed_mul * dt;
-            pz += fwd_z * forward * MOVE_SPEED * speed_mul * dt;
-        }
-
-        // Optional strafe (flat, no vertical)
-        if (std::fabs(strafe) > 0.001f)
-        {
-            px += right_x * strafe * STRAFE_SPEED * speed_mul * dt;
-            pz += right_z * strafe * STRAFE_SPEED * speed_mul * dt;
-        }
-
-
-        // ------------------------------------------------------------
-// CAMERA TARGET (ALWAYS LOCKED TO DRONE)
-// ------------------------------------------------------------
-        cam.target = {
-            px + fwd_x,
-            py + fwd_y,
-            pz + fwd_z
-        };
 
 
 
@@ -950,10 +845,10 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         if (local_player_id != 0) {
             Snapshot out{};
             out.player_id   = local_player_id;
-            out.x           = px;
-            out.y           = py;
-            out.z           = pz;
-            out.yaw         = drone_yaw;
+            out.x = drone.x;
+            out.y = drone.y;
+            out.z = drone.z;
+            out.yaw = drone.yaw;
             out.server_time = now * 0.001;
 
             net_send_raw_to(&out, sizeof(out), server);
@@ -963,14 +858,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
 
-
-        // Camera position (orbit behind drone)
-        cam.pos = {
-            px - fwd_x * cam_distance,
-            py - fwd_y * cam_distance + CAM_UP,
-            pz - fwd_z * cam_distance
-        };
-
+        drone_update_camera(drone, cam, cam_distance);
 
 
 
@@ -1100,7 +988,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         draw_sky(
             now * 0.001f,
             camera_yaw,
-            drone_pitch
+            drone.pitch
         );
 
 
@@ -1122,7 +1010,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 glEnable(GL_LIGHTING);
 glEnable(GL_COLOR_MATERIAL);
 draw_terrain(cam.pos.x, cam.pos.z, now * 0.001f);
-combat_fx_render(drone_yaw);
+combat_fx_render(drone.yaw);
 
 
 
@@ -1139,10 +1027,11 @@ combat_fx_render(drone_yaw);
         glDisable(GL_COLOR_MATERIAL);
 
 
-        bool local_idle = std::fabs(forward) < 0.01f &&
-            std::fabs(strafe) < 0.01f &&
+        bool local_idle =
+            std::fabs(ctl.forward) < 0.01f &&
+            std::fabs(ctl.strafe) < 0.01f &&
+            !ctl.boost;
 
-            !boost_active;
 
         IdlePose idle{};
         if (local_idle) {
@@ -1150,12 +1039,11 @@ combat_fx_render(drone_yaw);
         }
 
         glPushMatrix();
-        glTranslatef(px, py + idle.y_offset, pz);
+        glTranslatef(drone.x, drone.y + idle.y_offset, drone.z);
 
-        glRotatef((drone_yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
-        glRotatef(drone_pitch * 57.2958f + idle.pitch, 1, 0, 0);
-        glRotatef(drone_roll * 57.2958f + idle.roll, 0, 0, 1);
-
+        glRotatef((drone.yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
+        glRotatef(drone.pitch * 57.2958f + idle.pitch, 1, 0, 0);
+        glRotatef(drone.roll * 57.2958f + idle.roll, 0, 0, 1);
 
 
         glDisable(GL_LIGHTING);

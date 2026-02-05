@@ -65,6 +65,8 @@ add_executable(client
     src/client/world/combat_system.cpp
     src/client/ui/chat_ui.cpp
     src/client/ui/name_entry.cpp
+    src/client/drone/drone_controller.cpp
+
 )
 
 target_include_directories(client PRIVATE
