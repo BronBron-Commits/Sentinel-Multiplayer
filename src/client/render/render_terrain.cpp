@@ -17,9 +17,24 @@ static float noise(float x, float z);
 static GLuint g_grass_tex = 0;
 
 static float grass_field(float x, float z) {
-    // Large-scale density map (patches)
-    return noise(x * 0.015f, z * 0.015f);
+
+    // Large patches
+    float macro = noise(x * 0.010f, z * 0.010f);
+
+    // Medium breakup
+    float mid = noise(x * 0.045f, z * 0.045f) * 0.6f;
+
+    // Micro randomness
+    float micro = noise(x * 0.18f, z * 0.18f) * 0.3f;
+
+    float field = macro + mid + micro;
+
+    // Sharpen patches (meadows vs bare)
+    field = std::pow(std::clamp(field, 0.0f, 1.0f), 1.6f);
+
+    return field;
 }
+
 static float height_at(float x, float z);
 
 static constexpr float WIND_STRENGTH = 0.18f;
@@ -47,8 +62,8 @@ static constexpr float HEIGHT_GAIN = 8.0f;
 
 // Grass tuning (PERFORMANCE CRITICAL)
 static constexpr float GRASS_NEAR_DIST = 40.0f;
-static constexpr float GRASS_FAR_DIST = 65.0f;
-static constexpr float GRASS_HEIGHT = 0.5f;
+static constexpr float GRASS_FAR_DIST = 100.0f;
+static constexpr float GRASS_HEIGHT = 3.0f;
 static constexpr float GRASS_WIDTH = 0.065f;
 static constexpr float GRASS_LOD0_END = 40.0f;  // full
 static constexpr float GRASS_LOD1_END = 75.0f;  // reduced
@@ -173,71 +188,119 @@ static TerrainZone classify_zone(float height, float slope, float dist) {
 // Terrain coloring
 // ============================================================
 
-static void set_zone_color(TerrainZone zone, float height, float slope, float wx, float wz) {
+static float smooth_zone(float edge, float width) {
+    return std::clamp(edge / width, 0.0f, 1.0f);
+}
 
+
+static void set_zone_color(
+    TerrainZone zone,
+    float height,
+    float slope,
+    float wx,
+    float wz)
+{
     float h = std::clamp(height / HEIGHT_GAIN, 0.0f, 1.0f);
 
-    // Ambient occlusion from slope
-    float ao = std::clamp(1.0f - slope * 1.4f, 0.65f, 1.0f);
+    // --- Multi-scale breakup ---
+    float macro = noise(wx * 0.02f, wz * 0.02f) - 0.5f;
+    float mid = noise(wx * 0.12f, wz * 0.12f) - 0.5f;
+    float micro = noise(wx * 0.90f, wz * 0.90f) - 0.5f;
 
-    // Multi-scale color breakup
-    float macro = noise(wx * 0.03f, wz * 0.03f) - 0.5f;
-    float micro = noise(wx * 0.80f, wz * 0.80f) - 0.5f;
-    float grain = noise(wx * 3.50f, wz * 3.50f) - 0.5f;
+    macro *= 0.22f;
+    mid *= 0.10f;
+    micro *= 0.05f;
 
-    macro *= 0.18f;
-    micro *= 0.06f;
-    grain *= 0.04f;
-
-    // Elevation effects
+    // --- Moisture & exposure ---
     float moisture = std::clamp(1.0f - h, 0.0f, 1.0f);
-    float exposure = std::clamp(h, 0.0f, 1.0f);
+    float exposure = std::clamp(h + slope * 0.6f, 0.0f, 1.0f);
 
-    // Slope streaking (erosion illusion)
-    float streak = (noise(wz * 0.15f, wx * 0.02f) - 0.5f) * slope * 0.35f;
+    // --- Ambient occlusion from slope ---
+    float ao = std::clamp(1.0f - slope * 1.35f, 0.55f, 1.0f);
 
     float r, g, b;
 
-    switch (zone) {
-    case TerrainZone::Grass:
-        r = 0.28f + 0.22f * h - exposure * 0.05f;
-        g = 0.60f + 0.25f * h + moisture * 0.06f;
-        b = 0.30f - exposure * 0.04f;
-        break;
+    // ===========================
+    // BASE ZONE COLORS (NEUTRAL)
+    // ===========================
 
-    case TerrainZone::Dirt:
-        r = 0.48f + 0.20f * h;
-        g = 0.38f + 0.10f * h;
-        b = 0.26f;
-        break;
+    if (zone == TerrainZone::Grass) {
 
-    default: // Rock
-        r = 0.58f + 0.28f * h;
-        g = 0.58f + 0.28f * h;
-        b = 0.64f + 0.22f * h;
-        break;
+        r = lerp(0.22f, 0.38f, moisture);
+        g = lerp(0.42f, 0.68f, moisture);
+        b = lerp(0.22f, 0.34f, moisture);
+
+        // Dry yellowing
+        float dry = noise(wx * 0.05f, wz * 0.05f);
+        r += dry * 0.12f;
+        g += dry * 0.06f;
+
+    }
+    else if (zone == TerrainZone::Dirt) {
+
+        r = 0.44f + h * 0.18f;
+        g = 0.34f + h * 0.12f;
+        b = 0.24f;
+
+        // Dark wet soil
+        r *= lerp(0.85f, 1.05f, moisture);
+        g *= lerp(0.80f, 1.00f, moisture);
+        b *= lerp(0.75f, 0.95f, moisture);
+
+    }
+    else { // Rock
+
+        float stone = lerp(0.48f, 0.70f, h);
+
+        r = stone;
+        g = stone;
+        b = stone + 0.05f;
+
+        // Cold/warm rock tint
+        float tint = noise(wx * 0.07f, wz * 0.07f);
+        r += tint * 0.06f;
+        b -= tint * 0.04f;
     }
 
-    // Pebble speckling for dirt & rock
-    if (zone != TerrainZone::Grass) {
-        float speck = noise(wx * 4.0f, wz * 4.0f);
-        if (speck > 0.72f) {
-            r += 0.12f;
-            g += 0.10f;
-            b += 0.08f;
-        }
-    }
+    // ===========================
+    // EROSION / STREAKING
+    // ===========================
 
-    r += macro + micro + grain + streak;
-    g += macro + micro + grain + streak;
-    b += macro + micro + grain + streak;
+    float streak =
+        (noise(wz * 0.18f, wx * 0.05f) - 0.5f) *
+        slope * 0.35f;
+
+    r += streak;
+    g += streak;
+    b += streak;
+
+    // ===========================
+    // FINAL BREAKUP
+    // ===========================
+
+    r += macro + mid + micro;
+    g += macro + mid + micro;
+    b += macro + mid + micro;
+
+    // ===========================
+    // LIGHT EXPOSURE
+    // ===========================
+
+    r *= lerp(1.05f, 0.85f, exposure);
+    g *= lerp(1.05f, 0.90f, exposure);
+    b *= lerp(1.05f, 0.95f, exposure);
+
+    // ===========================
+    // APPLY AO
+    // ===========================
 
     glColor3f(
-        r * ao,
-        g * ao,
-        b * ao
+        std::clamp(r * ao, 0.0f, 1.0f),
+        std::clamp(g * ao, 0.0f, 1.0f),
+        std::clamp(b * ao, 0.0f, 1.0f)
     );
 }
+
 
 static GLuint generate_grass_texture(int size = 256)
 {
@@ -304,6 +367,68 @@ static GLuint generate_grass_texture(int size = 256)
     return tex;
 }
 
+static void grass_color(
+    float wx, float wz,
+    float height,
+    float field,
+    float wind,
+    float dist)
+{
+    // Base green range
+    float base = 0.45f + field * 0.35f;
+
+    // Dry / yellow patches
+    float dry =
+        noise(wx * 0.06f, wz * 0.06f);
+
+    // Micro color breakup
+    float tint =
+        noise(wx * 0.8f, wz * 0.8f) * 0.08f;
+
+    // Height-based gradient (darker at base)
+    float h_t = std::clamp(height / GRASS_HEIGHT, 0.0f, 1.0f);
+
+    // Wind lightening (moving blades catch light)
+    float wind_light = std::abs(wind) * 0.25f;
+
+    float r = base * 0.55f;
+    float g = base * 1.05f;
+    float b = base * 0.45f;
+
+    // Dry yellowing
+    if (dry > 0.55f) {
+        r += 0.10f * dry;
+        g += 0.05f * dry;
+    }
+
+    // Dark base, bright tips
+    r *= lerp(0.55f, 1.1f, h_t);
+    g *= lerp(0.55f, 1.2f, h_t);
+    b *= lerp(0.55f, 1.0f, h_t);
+
+    // Wind highlight
+    r += wind_light * 0.12f;
+    g += wind_light * 0.18f;
+
+    // Distance fade (fog blending)
+    float fade = std::clamp(1.0f - dist / GRASS_FAR_DIST, 0.5f, 1.0f);
+    r *= fade;
+    g *= fade;
+    b *= fade;
+
+    // Final micro variation
+    r += tint;
+    g += tint;
+    b += tint;
+
+    glColor3f(
+        std::clamp(r, 0.0f, 1.0f),
+        std::clamp(g, 0.0f, 1.0f),
+        std::clamp(b, 0.0f, 1.0f)
+    );
+}
+
+
 // ============================================================
 // Grass rendering (SAFE + FAST)
 // ============================================================
@@ -355,15 +480,33 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 continue;
 
             float field = grass_field(wx, wz);
-            float density = 0.9f + field * 1.2f;
 
-            int strands = (dist < GRASS_LOD0_END)
-                ? int(10 * density) + int(hash(x + 41, z + 97) * 6)
-                : int(5 * density) + int(hash(x + 41, z + 97) * 3);
+            // Kill grass completely in bare patches
+            if (field < 0.22f)
+                continue;
+
+            // Density curve (clumps feel thicker)
+            float density = std::pow(field, 1.35f);
+
+            // Per-cell clump bias
+            float clump = hash(x * 17 + 13, z * 29 + 7);
+            density *= lerp(0.7f, 2.2f, clump);
+
+            // Distance LOD
+            int base =
+                (dist < GRASS_LOD0_END) ? 16 :
+                (dist < GRASS_LOD1_END) ? 8 : 4;
+
+            int strands = int(base * density);
+
 
             for (int i = 0; i < strands; ++i) {
-                float ox = (hash(x + i * 13, z + i * 29) - 0.5f) * 0.6f;
-                float oz = (hash(x + i * 31, z + i * 17) - 0.5f) * 0.6f;
+                float angle = hash(x + i * 37, z + i * 41) * 6.28318f;
+                float radius = std::pow(hash(x + i * 11, z + i * 19), 0.7f) * 0.8f;
+
+                float ox = std::cos(angle) * radius;
+                float oz = std::sin(angle) * radius;
+
 
                 float px = wx + ox;
                 float pz = wz + oz;
@@ -377,10 +520,26 @@ static void draw_grass(float cam_x, float cam_z, float time)
                         noise(px * WIND_SCALE, pz * WIND_SCALE) * 3.0f)
                     * WIND_STRENGTH;
 
-                float h = GRASS_HEIGHT *
-                    (0.6f + hash(x + i * 7, z + i * 11));
+                float h =
+                    GRASS_HEIGHT *
+                    lerp(0.45f, 1.25f,
+                        hash(x * 23 + i * 3, z * 31 + i * 5));
 
-                float bend = wind * 1.4f;
+                grass_color(
+                    px, pz,
+                    h,
+                    field,
+                    wind,
+                    dist
+                );
+
+
+                float gust =
+                    noise(px * 0.25f + time * 0.15f,
+                        pz * 0.25f + time * 0.12f);
+
+                float bend = (wind + gust * 0.6f) * 1.35f;
+
 
                 glBegin(GL_QUADS);
 
@@ -426,12 +585,20 @@ static void draw_tree(float x, float z, float time) {
     if (ny < 0.75f)
         return;
 
+    // -----------------------------------------
+// World-stable height variation (PER TREE)
+// -----------------------------------------
+    float height_variation =
+        lerp(0.75f, 1.35f,
+            hash((int)(x * 11), (int)(z * 17)));
+
+
 
     // ------------------------------
     // Trunk
     // ------------------------------
-    const float trunk_h = 4.5f;
-    const float trunk_r = 0.22f;
+    const float trunk_h = 8.5f * height_variation;
+    const float trunk_r = 0.32f * height_variation;
 
     glColor3f(0.42f, 0.30f, 0.18f);
 
@@ -448,6 +615,52 @@ static void draw_tree(float x, float z, float time) {
     glEnd();
 
     // ------------------------------
+// Branches (structural support)
+// ------------------------------
+    glDisable(GL_LIGHTING);
+
+    const int BRANCHES = 7;
+    const float BRANCH_LEN = trunk_h * 0.5f;
+    const float BRANCH_R = trunk_r * 0.28f;
+
+    glColor3f(0.40f, 0.28f, 0.18f);
+
+    for (int i = 0; i < BRANCHES; ++i) {
+
+        float t = (i + 1) / float(BRANCHES + 1);
+        float bh = y + trunk_h * (0.35f + t * 0.45f);
+
+        float angle =
+            hash((int)(x * 13) + i * 17, (int)(z * 19) + i * 29)
+            * 6.28318f;
+
+        float tilt =
+            lerp(0.35f, 0.65f,
+                hash((int)(x * 23) + i * 31,
+                    (int)(z * 29) + i * 41));
+
+        float dx = std::cos(angle);
+        float dz = std::sin(angle);
+
+        float ex = x + dx * BRANCH_LEN;
+        float ez = z + dz * BRANCH_LEN;
+        float ey = bh + BRANCH_LEN * tilt;
+
+        glBegin(GL_QUADS);
+
+        glVertex3f(x - dz * BRANCH_R, bh, z + dx * BRANCH_R);
+        glVertex3f(x + dz * BRANCH_R, bh, z - dx * BRANCH_R);
+        float tip_r = BRANCH_R * 0.45f;
+
+        glVertex3f(ex + dz * tip_r, ey, ez - dx * tip_r);
+        glVertex3f(ex - dz * tip_r, ey, ez + dx * tip_r);
+
+
+        glEnd();
+    }
+
+
+    // ------------------------------
     // Canopy (volumetric leaf clusters)
     // ------------------------------
     glDisable(GL_LIGHTING);
@@ -458,9 +671,12 @@ static void draw_tree(float x, float z, float time) {
 
     glDepthMask(GL_TRUE);   // IMPORTANT
 
-    const int CLUSTERS = 14;
-    const float CANOPY_R = 2.4f;
-    const float CANOPY_H = trunk_h + 1.2f;
+    const int CLUSTERS = int(36 * height_variation);
+
+    // Canopy starts ON the trunk, not floating above it
+    const float CANOPY_BASE = trunk_h * 0.78f;
+    const float CANOPY_R = 3.6f * height_variation;
+
 
     for (int i = 0; i < CLUSTERS; ++i) {
 
@@ -470,7 +686,8 @@ static void draw_tree(float x, float z, float time) {
 
         float theta = ha * 6.28318f;
         float radius = CANOPY_R * (0.35f + hb * 0.65f);
-        float height = CANOPY_H + hb * 2.2f;
+        float height = CANOPY_BASE + hb * 4.5f;
+
 
         float sway =
             std::sin(time * 0.7f + theta + x * 0.1f + z * 0.1f)
@@ -480,7 +697,16 @@ static void draw_tree(float x, float z, float time) {
         float cy = y + height;
         float cz = z + std::sin(theta) * radius;
 
-        float size = 0.9f + hb * 0.8f;
+        // Pull some clusters inward to fill canopy volume
+        if (hb > 0.4f) {
+            cx = lerp(x, cx, 0.55f);
+            cz = lerp(z, cz, 0.55f);
+            cy -= 1.0f * height_variation;
+        }
+
+
+        float size = 1.3f + hb * 1.6f;
+
 
         float tint = 0.85f + hb * 0.15f;
 
@@ -632,7 +858,22 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
                     float slope = terrain_slope(ny);
                     TerrainZone zone = classify_zone(wy, slope, dist);
 
+                    // Soft blend near dirt path
+                    float dirt_blend = smooth_zone(dist - 2.0f, 2.5f);
+                    float rock_blend = smooth_zone(slope - 0.55f, 0.15f);
+
+                    // Base color
                     set_zone_color(zone, wy, slope, wx, wz);
+
+                    // Dirt tint overlay
+                    if (dirt_blend < 1.0f) {
+                        glColor3f(
+                            lerp(0.42f, 0.30f, dirt_blend),
+                            lerp(0.34f, 0.26f, dirt_blend),
+                            lerp(0.22f, 0.18f, dirt_blend)
+                        );
+                    }
+
 
                     glNormal3f(nx, ny, nz);
                     glVertex3f(wx, wy, wz);
