@@ -25,60 +25,78 @@ static inline float lerp(float a, float b, float t)
 }
 
 // ============================================================
-// Atmospheric color model (screen-space)
+// Atmospheric color model (screen-space gradient)
 // ============================================================
 
 static void sky_color(float t, float& r, float& g, float& b)
 {
-    // t = 0 bottom, 1 top
+    /*
+        t = 0.0 → horizon
+        t = 1.0 → zenith
+    */
     t = clampf(t, 0.0f, 1.0f);
 
-    // Push saturation toward horizon
-    float h = std::pow(t, 1.25f);
+    // --------------------------------------------------------
+    // Lift reds upward (THIS is the key change)
+    // --------------------------------------------------------
+    // < 1.0 pushes low colors higher into the sky
+    float h = std::pow(t, 0.72f);
 
-    // === Horizon (deep sunset reds & golds) ===
-    const float low_r = 1.00f;
-    const float low_g = 0.48f;
-    const float low_b = 0.26f;
+    // --------------------------------------------------------
+    // Color stops (lush sunset palette)
+    // --------------------------------------------------------
 
-    // === Mid sky (peach / rose) ===
+    // Horizon — deep ember / crimson
+    const float low_r = 1.08f;
+    const float low_g = 0.28f;
+    const float low_b = 0.18f;
+
+    // Mid sky — rose / magenta glow
     const float mid_r = 0.92f;
-    const float mid_g = 0.58f;
-    const float mid_b = 0.48f;
+    const float mid_g = 0.40f;
+    const float mid_b = 0.62f;
 
-    // === Zenith (warm cobalt, not dark) ===
-    const float high_r = 0.38f;
-    const float high_g = 0.52f;
-    const float high_b = 0.78f;
+    // Zenith — rich evening blue
+    const float high_r = 0.18f;
+    const float high_g = 0.32f;
+    const float high_b = 0.70f;
 
-    if (h < 0.55f)
+    // --------------------------------------------------------
+    // Two-stage blend
+    // --------------------------------------------------------
+
+    if (h < 0.6f)
     {
-        float k = h / 0.55f;
+        float k = h / 0.6f;
         r = lerp(low_r, mid_r, k);
         g = lerp(low_g, mid_g, k);
         b = lerp(low_b, mid_b, k);
     }
     else
     {
-        float k = (h - 0.55f) / 0.45f;
+        float k = (h - 0.6f) / 0.4f;
         r = lerp(mid_r, high_r, k);
         g = lerp(mid_g, high_g, k);
         b = lerp(mid_b, high_b, k);
     }
 
-    // Extra atmospheric bloom near horizon
-    float haze = std::exp(-t * 3.5f);
-    r += haze * 0.25f;
-    g += haze * 0.15f;
-    b += haze * 0.08f;
+    // --------------------------------------------------------
+    // Atmospheric haze (adds depth near horizon)
+    // --------------------------------------------------------
 
+    float haze = std::exp(-t * 3.0f);
+    r += haze * 0.28f;
+    g += haze * 0.16f;
+    b += haze * 0.10f;
+
+    // Final clamp
     r = clampf(r, 0.0f, 1.0f);
     g = clampf(g, 0.0f, 1.0f);
     b = clampf(b, 0.0f, 1.0f);
 }
 
 // ============================================================
-// Fullscreen sky draw
+// Fullscreen sky draw (no geometry, no camera dependency)
 // ============================================================
 
 static void draw_fullscreen_sky()
@@ -93,7 +111,7 @@ static void draw_fullscreen_sky()
 
     glBegin(GL_QUADS);
 
-    // Bottom
+    // Bottom (horizon)
     {
         float r, g, b;
         sky_color(0.0f, r, g, b);
@@ -102,7 +120,7 @@ static void draw_fullscreen_sky()
         glVertex2f(1.0f, -1.0f);
     }
 
-    // Top
+    // Top (zenith)
     {
         float r, g, b;
         sky_color(1.0f, r, g, b);
