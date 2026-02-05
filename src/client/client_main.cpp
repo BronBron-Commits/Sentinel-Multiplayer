@@ -137,8 +137,8 @@ static float camera_yaw = 0.0f;
 static float cam_distance = CAM_BACK;
 
 constexpr float CAM_MIN = 3.0f;
-constexpr float CAM_MAX = 25.0f;
-constexpr float CAM_ZOOM_SPEED = 1.2f;
+constexpr float CAM_MAX = 250.0f;
+constexpr float CAM_ZOOM_SPEED = 1.75f;
 
 // Larger delay = smoother remote motion
 constexpr double INTERP_DELAY = 0.45; // seconds
@@ -605,6 +605,8 @@ int main()
         1280, 720,
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
+
+    SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
 
     SDL_SetRelativeMouseMode(SDL_FALSE);
