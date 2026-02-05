@@ -183,23 +183,6 @@ static inline float flower_wind(float x, float z, float time) {
         std::sin(time * 3.1f + x * 0.47f) * 0.4f;
 }
 
-static void leaf_color(int seed) {
-    float t = hash(seed * 37, seed * 53);
-
-    if (t < 0.4f)      glColor3f(0.95f, 0.70f, 0.25f); // golden
-    else if (t < 0.7f) glColor3f(0.90f, 0.45f, 0.18f); // orange
-    else               glColor3f(0.75f, 0.25f, 0.15f); // red
-}
-
-static void butterfly_color(int seed) {
-    float t = hash(seed * 11, seed * 29);
-
-    if (t < 0.33f)      glColor3f(0.95f, 0.65f, 0.15f); // monarch orange
-    else if (t < 0.66f) glColor3f(0.65f, 0.75f, 0.95f); // pale blue
-    else                glColor3f(0.95f, 0.95f, 0.75f); // soft yellow
-}
-
-
 enum class CanopyColor {
     Gold,
     Purple,
@@ -214,6 +197,72 @@ static inline CanopyColor pick_canopy_color(float x, float z) {
     else if (t < 0.82f) return CanopyColor::Purple; // accent
     else                return CanopyColor::Red;    // rare
 }
+
+
+static void leaf_color(
+    float tree_x,
+    float tree_z,
+    int seed)
+{
+    // Match leaf color to canopy (world-stable)
+    CanopyColor c = pick_canopy_color(tree_x, tree_z);
+
+    // Small per-leaf brightness variation
+    float tint = 0.85f + hash(seed * 19, seed * 31) * 0.15f;
+
+    switch (c) {
+    default:
+    case CanopyColor::Gold:
+        // golden / orange / red mix
+        if (hash(seed * 37, seed * 53) < 0.5f)
+            glColor3f(0.95f * tint, 0.70f * tint, 0.25f * tint);
+        else
+            glColor3f(0.90f * tint, 0.45f * tint, 0.18f * tint);
+        break;
+
+    case CanopyColor::Purple:
+        glColor3f(
+            0.78f * tint,
+            0.48f * tint,
+            0.92f * tint
+        );
+        break;
+
+    case CanopyColor::Red:
+        glColor3f(
+            0.90f * tint,
+            0.32f * tint,
+            0.22f * tint
+        );
+        break;
+    }
+}
+
+
+static void butterfly_color(int seed) {
+    float t = hash(seed * 11, seed * 29);
+
+    if (t < 0.33f)      glColor3f(0.95f, 0.65f, 0.15f); // monarch orange
+    else if (t < 0.66f) glColor3f(0.65f, 0.75f, 0.95f); // pale blue
+    else                glColor3f(0.95f, 0.95f, 0.75f); // soft yellow
+}
+
+enum class GrassColor {
+    Green,
+    YellowGreen,
+    YellowBrown
+};
+
+static inline GrassColor pick_grass_color(float x, float z) {
+    // LOW frequency = patchy fields, not noise speckle
+    float t = noise(x * 0.015f, z * 0.015f);
+
+    if (t < 0.45f)      return GrassColor::Green;
+    else if (t < 0.75f) return GrassColor::YellowGreen;
+    else                return GrassColor::YellowBrown;
+}
+
+
 
 static inline void set_canopy_color(CanopyColor c, float tint) {
     switch (c) {
@@ -492,52 +541,80 @@ static void grass_color(
     float wind,
     float dist)
 {
-    // Base green range
-    float base = 0.45f + field * 0.35f;
-
-    // Dry / yellow patches
-    float dry =
-        noise(wx * 0.06f, wz * 0.06f);
-
-    // Micro color breakup
-    float tint =
-        noise(wx * 0.8f, wz * 0.8f) * 0.08f;
+    GrassColor gc = pick_grass_color(wx, wz);
 
     // Height-based gradient (darker at base)
     float h_t = std::clamp(height / GRASS_HEIGHT, 0.0f, 1.0f);
 
-    // Wind lightening (moving blades catch light)
+    // Wind highlight
     float wind_light = std::abs(wind) * 0.25f;
 
-    float r = base * 0.55f;
-    float g = base * 1.05f;
-    float b = base * 0.45f;
+    float r, g, b;
 
-    // Dry yellowing
-    if (dry > 0.55f) {
-        r += 0.10f * dry;
-        g += 0.05f * dry;
+    // ===========================
+    // BASE COLOR PER PATCH
+    // ===========================
+
+    switch (gc) {
+    default:
+    case GrassColor::Green:
+        r = 0.32f;
+        g = 0.62f;
+        b = 0.28f;
+        break;
+
+    case GrassColor::YellowGreen:
+        r = 0.48f;
+        g = 0.64f;
+        b = 0.26f;
+        break;
+
+    case GrassColor::YellowBrown:
+        r = 0.55f;
+        g = 0.50f;
+        b = 0.22f;
+        break;
     }
 
-    // Dark base, bright tips
-    r *= lerp(0.55f, 1.1f, h_t);
-    g *= lerp(0.55f, 1.2f, h_t);
-    b *= lerp(0.55f, 1.0f, h_t);
+    // ===========================
+    // FIELD DENSITY INFLUENCE
+    // (thicker = richer color)
+    // ===========================
+    float richness = lerp(0.75f, 1.15f, field);
+    r *= richness;
+    g *= richness;
+    b *= richness;
 
-    // Wind highlight
-    r += wind_light * 0.12f;
+    // ===========================
+    // DARK BASE → BRIGHT TIP
+    // ===========================
+    r *= lerp(0.55f, 1.15f, h_t);
+    g *= lerp(0.55f, 1.25f, h_t);
+    b *= lerp(0.55f, 1.05f, h_t);
+
+    // ===========================
+    // WIND LIGHTING
+    // ===========================
+    r += wind_light * 0.10f;
     g += wind_light * 0.18f;
 
-    // Distance fade (fog blending)
-    float fade = std::clamp(1.0f - dist / GRASS_FAR_DIST, 0.5f, 1.0f);
+    // ===========================
+    // DISTANCE FADE
+    // ===========================
+    float fade = std::clamp(1.0f - dist / GRASS_FAR_DIST, 0.55f, 1.0f);
     r *= fade;
     g *= fade;
     b *= fade;
 
-    // Final micro variation
-    r += tint;
-    g += tint;
-    b += tint;
+    // ===========================
+    // MICRO BREAKUP (VERY SUBTLE)
+    // ===========================
+    float micro =
+        noise(wx * 0.9f, wz * 0.9f) * 0.04f;
+
+    r += micro;
+    g += micro;
+    b += micro;
 
     glColor3f(
         std::clamp(r, 0.0f, 1.0f),
@@ -545,6 +622,7 @@ static void grass_color(
         std::clamp(b, 0.0f, 1.0f)
     );
 }
+
 
 
 // ============================================================
@@ -1120,7 +1198,8 @@ static void draw_falling_leaves(
             LEAF_SIZE *
             lerp(0.6f, 1.2f, hash(seed, 53));
 
-        leaf_color(seed);
+        leaf_color(tree_x, tree_z, seed);
+
 
         glBegin(GL_QUADS);
 
