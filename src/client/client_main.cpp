@@ -1103,12 +1103,19 @@ combat_fx_render(drone.yaw);
             glPopMatrix();
         }
         else {
+            constexpr float WARTHOG_SCALE = 5.0f;
+
             glPushMatrix();
             glTranslatef(warthog.x, warthog.y, warthog.z);
             glRotatef(warthog.yaw * 57.2958f, 0, 1, 0);
-            glScalef(1.6f, 0.6f, 2.2f);
+            glScalef(
+                1.6f * WARTHOG_SCALE,
+                0.6f * WARTHOG_SCALE,
+                2.2f * WARTHOG_SCALE
+            );
             draw_unit_cube();
             glPopMatrix();
+
         }
 
         glEnable(GL_COLOR_MATERIAL);

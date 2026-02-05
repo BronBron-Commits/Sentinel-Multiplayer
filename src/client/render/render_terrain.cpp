@@ -165,6 +165,11 @@ static float height_at(float x, float z) {
     return fbm(x, z) * HEIGHT_GAIN;
 }
 
+float terrain_height(float x, float z)
+{
+    return height_at(x, z);
+}
+
 static inline float leaf_wind(float x, float z, float time) {
     return
         std::sin(time * 0.45f + x * 0.08f + z * 0.06f) * 0.4f +
