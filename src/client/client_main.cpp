@@ -23,7 +23,8 @@
 #include <cstdint>
 #include <unordered_map>
 
-#include "drone/drone_controller.hpp"
+#include "vehicles/drone/drone_controller.hpp"
+#include "vehicles/warthog/warthog_controller.hpp"
 
 #include "render/render_terrain.hpp"
 #include "render/render_drone_shader.hpp"
@@ -49,6 +50,12 @@
 #include "util/math_util.hpp"
 
 
+enum class ActiveVehicle {
+    Drone,
+    Warthog
+};
+
+static ActiveVehicle active_vehicle = ActiveVehicle::Drone;
 
 
 
@@ -77,6 +84,7 @@ static bool prev_space = false;
 // Drone state (MODULARIZED)
 // ------------------------------------------------------------
 static DroneState drone{};
+static WarthogState warthog{};
 
 static void get_billboard_axes(
     const Camera& cam,
@@ -696,6 +704,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
     Camera cam{};
     drone_init(drone);
+    warthog_init(warthog);
 
     // Track which players are "ready to render"
     std::unordered_map<uint32_t, bool> has_remote;
@@ -737,6 +746,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                             name_buffer.pop_back();
                     }
 
+
                     if (e.key.keysym.sym == SDLK_RETURN ||
                         e.key.keysym.sym == SDLK_KP_ENTER) {
 
@@ -762,6 +772,18 @@ glViewport(0, 0, g_fb_w, g_fb_h);
             // --------------------------------------------------
             // GAME INPUT (AFTER NAME ENTRY)
             // --------------------------------------------------
+
+            if (e.type == SDL_KEYDOWN) {
+
+                if (e.key.keysym.sym == SDLK_1) {
+                    active_vehicle = ActiveVehicle::Drone;
+                }
+
+                if (e.key.keysym.sym == SDLK_2) {
+                    active_vehicle = ActiveVehicle::Warthog;
+                }
+            }
+
             if (e.type == SDL_MOUSEMOTION) {
                 controls_on_mouse_motion(
                     (float)e.motion.xrel,
@@ -798,7 +820,13 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         cam_distance = std::clamp(cam_distance, CAM_MIN, CAM_MAX);
 
 
-        drone_update(drone, ctl, dt, camera_yaw);
+        if (active_vehicle == ActiveVehicle::Drone) {
+            drone_update(drone, ctl, dt, camera_yaw);
+        }
+        else {
+            warthog_update(warthog, ctl, dt);
+        }
+
         controls_end_frame();
 
 
@@ -857,9 +885,12 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         // -------- CAMERA (USE camera_yaw / camera_pitch) --------
 
 
-
-        drone_update_camera(drone, cam, cam_distance);
-
+        if (active_vehicle == ActiveVehicle::Drone) {
+            drone_update_camera(drone, cam, cam_distance);
+        }
+        else {
+            warthog_update_camera(warthog, cam, cam_distance);
+        }
 
 
 
@@ -1021,55 +1052,64 @@ combat_fx_render(drone.yaw);
 
 
 
+        if (active_vehicle == ActiveVehicle::Drone) {
 
-        // Local drone (metallic)
-        glEnable(GL_LIGHTING);
-        glDisable(GL_COLOR_MATERIAL);
-
-
-        bool local_idle =
-            std::fabs(ctl.forward) < 0.01f &&
-            std::fabs(ctl.strafe) < 0.01f &&
-            !ctl.boost;
+            // Local drone (metallic)
+            glEnable(GL_LIGHTING);
+            glDisable(GL_COLOR_MATERIAL);
 
 
-        IdlePose idle{};
-        if (local_idle) {
-            idle = compute_idle_pose(local_player_id, now * 0.001);
+            bool local_idle =
+                std::fabs(ctl.forward) < 0.01f &&
+                std::fabs(ctl.strafe) < 0.01f &&
+                !ctl.boost;
+
+
+            IdlePose idle{};
+            if (local_idle) {
+                idle = compute_idle_pose(local_player_id, now * 0.001);
+            }
+
+            glPushMatrix();
+            glTranslatef(drone.x, drone.y + idle.y_offset, drone.z);
+
+            glRotatef((drone.yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
+            glRotatef(drone.pitch * 57.2958f + idle.pitch, 1, 0, 0);
+            glRotatef(drone.roll * 57.2958f + idle.roll, 0, 0, 1);
+
+
+            glDisable(GL_LIGHTING);
+            glUseProgram(g_drone_program);
+
+            // material
+            glUniform3f(uBaseColor, 0.65f, 0.68f, 0.72f);
+            glUniform1f(uMetallic, 0.90f);
+            glUniform1f(uRoughness, 0.32f);
+
+            // camera + light
+            glUniform3f(uCameraPos, cam.pos.x, cam.pos.y, cam.pos.z);
+            glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
+            glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
+
+            // matrices
+            upload_fixed_matrices();
+
+            // draw
+            draw_drone_mesh();
+
+            glUseProgram(0);
+            glEnable(GL_LIGHTING);
+
+            glPopMatrix();
         }
-
-        glPushMatrix();
-        glTranslatef(drone.x, drone.y + idle.y_offset, drone.z);
-
-        glRotatef((drone.yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
-        glRotatef(drone.pitch * 57.2958f + idle.pitch, 1, 0, 0);
-        glRotatef(drone.roll * 57.2958f + idle.roll, 0, 0, 1);
-
-
-        glDisable(GL_LIGHTING);
-        glUseProgram(g_drone_program);
-
-        // material
-        glUniform3f(uBaseColor, 0.65f, 0.68f, 0.72f);
-        glUniform1f(uMetallic, 0.90f);
-        glUniform1f(uRoughness, 0.32f);
-
-        // camera + light
-        glUniform3f(uCameraPos, cam.pos.x, cam.pos.y, cam.pos.z);
-        glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
-        glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
-
-        // matrices
-        upload_fixed_matrices();
-
-        // draw
-        draw_drone_mesh();
-
-        glUseProgram(0);
-        glEnable(GL_LIGHTING);
-
-        glPopMatrix();
-
+        else {
+            glPushMatrix();
+            glTranslatef(warthog.x, warthog.y, warthog.z);
+            glRotatef(warthog.yaw * 57.2958f, 0, 1, 0);
+            glScalef(1.6f, 0.6f, 2.2f);
+            draw_unit_cube();
+            glPopMatrix();
+        }
 
         glEnable(GL_COLOR_MATERIAL);
 
