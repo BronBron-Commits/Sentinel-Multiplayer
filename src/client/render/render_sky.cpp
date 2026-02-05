@@ -7,6 +7,8 @@
 
 #include <cmath>
 #include <algorithm>
+#include <vector>
+#include <cstdint>
 
 #include "render_sky.hpp"
 
@@ -25,45 +27,17 @@ static inline float lerp(float a, float b, float t)
 }
 
 // ============================================================
-// Atmospheric color model (screen-space gradient)
+// Atmospheric color model
 // ============================================================
 
 static void sky_color(float t, float& r, float& g, float& b)
 {
-    /*
-        t = 0.0 → horizon
-        t = 1.0 → zenith
-    */
     t = clampf(t, 0.0f, 1.0f);
-
-    // --------------------------------------------------------
-    // Lift reds upward (THIS is the key change)
-    // --------------------------------------------------------
-    // < 1.0 pushes low colors higher into the sky
     float h = std::pow(t, 0.72f);
 
-    // --------------------------------------------------------
-    // Color stops (lush sunset palette)
-    // --------------------------------------------------------
-
-    // Horizon — deep ember / crimson
-    const float low_r = 1.08f;
-    const float low_g = 0.28f;
-    const float low_b = 0.18f;
-
-    // Mid sky — rose / magenta glow
-    const float mid_r = 0.92f;
-    const float mid_g = 0.40f;
-    const float mid_b = 0.62f;
-
-    // Zenith — rich evening blue
-    const float high_r = 0.18f;
-    const float high_g = 0.32f;
-    const float high_b = 0.70f;
-
-    // --------------------------------------------------------
-    // Two-stage blend
-    // --------------------------------------------------------
+    const float low_r = 1.08f, low_g = 0.28f, low_b = 0.18f;
+    const float mid_r = 0.92f, mid_g = 0.40f, mid_b = 0.62f;
+    const float high_r = 0.18f, high_g = 0.32f, high_b = 0.70f;
 
     if (h < 0.6f)
     {
@@ -80,23 +54,18 @@ static void sky_color(float t, float& r, float& g, float& b)
         b = lerp(mid_b, high_b, k);
     }
 
-    // --------------------------------------------------------
-    // Atmospheric haze (adds depth near horizon)
-    // --------------------------------------------------------
-
     float haze = std::exp(-t * 3.0f);
     r += haze * 0.28f;
     g += haze * 0.16f;
     b += haze * 0.10f;
 
-    // Final clamp
     r = clampf(r, 0.0f, 1.0f);
     g = clampf(g, 0.0f, 1.0f);
     b = clampf(b, 0.0f, 1.0f);
 }
 
 // ============================================================
-// Fullscreen sky draw (no geometry, no camera dependency)
+// Fullscreen sky
 // ============================================================
 
 static void draw_fullscreen_sky()
@@ -111,22 +80,133 @@ static void draw_fullscreen_sky()
 
     glBegin(GL_QUADS);
 
-    // Bottom (horizon)
-    {
-        float r, g, b;
-        sky_color(0.0f, r, g, b);
-        glColor3f(r, g, b);
-        glVertex2f(-1.0f, -1.0f);
-        glVertex2f(1.0f, -1.0f);
-    }
+    float r, g, b;
+    sky_color(0.0f, r, g, b);
+    glColor3f(r, g, b);
+    glVertex2f(-1, -1);
+    glVertex2f(1, -1);
 
-    // Top (zenith)
+    sky_color(1.0f, r, g, b);
+    glColor3f(r, g, b);
+    glVertex2f(1, 1);
+    glVertex2f(-1, 1);
+
+    glEnd();
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+// ============================================================
+// Stars (sky-space, infinite distance)
+// ============================================================
+
+struct Star
+{
+    float dx, dy, dz;
+    float base;
+    float twinkle;
+};
+
+static std::vector<Star> g_stars;
+static bool g_stars_init = false;
+
+static float frand(uint32_t& s)
+{
+    s = s * 1664525u + 1013904223u;
+    return (s & 0x00FFFFFF) / float(0x01000000);
+}
+
+static void rotate_yaw_pitch(
+    float& x, float& y, float& z,
+    float yaw, float pitch)
+{
+    float cy = std::cos(yaw);
+    float sy = std::sin(yaw);
+    float x1 = cy * x - sy * z;
+    float z1 = sy * x + cy * z;
+    x = x1; z = z1;
+
+    float cp = std::cos(pitch);
+    float sp = std::sin(pitch);
+    float y1 = cp * y - sp * z;
+    float z2 = sp * y + cp * z;
+    y = y1; z = z2;
+}
+
+static void init_stars()
+{
+    if (g_stars_init) return;
+    g_stars_init = true;
+
+    uint32_t seed = 1337;
+    constexpr int STAR_COUNT = 600;
+
+    for (int i = 0; i < STAR_COUNT; ++i)
     {
-        float r, g, b;
-        sky_color(1.0f, r, g, b);
-        glColor3f(r, g, b);
-        glVertex2f(1.0f, 1.0f);
-        glVertex2f(-1.0f, 1.0f);
+        float u = frand(seed);
+        float v = frand(seed);
+
+        float theta = u * 6.2831853f;
+        float phi = std::acos(2.0f * v - 1.0f);
+
+        Star s{};
+        s.dx = std::sin(phi) * std::cos(theta);
+        s.dy = std::cos(phi);
+        s.dz = std::sin(phi) * std::sin(theta);
+
+        if (s.dy < -0.15f) continue;
+
+        s.base = 0.6f + frand(seed) * 0.4f;
+        s.twinkle = 1.0f + frand(seed) * 4.0f;
+
+        g_stars.push_back(s);
+    }
+}
+
+static void draw_stars(float time_seconds, float yaw, float pitch)
+{
+    init_stars();
+
+    glUseProgram(0);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_ALPHA_TEST);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glPointSize(5.0f);
+    glBegin(GL_POINTS);
+
+    for (const Star& s : g_stars)
+    {
+        float x = s.dx, y = s.dy, z = s.dz;
+        rotate_yaw_pitch(x, y, z, yaw, pitch);
+        if (z <= 0.0f) continue;
+
+        float sx = x / z;
+        float sy = y / z;
+
+        float tw = std::sin(time_seconds * s.twinkle + x * 19.0f + y * 23.0f);
+        tw = 0.5f + 0.5f * tw;
+
+        float b = s.base * lerp(0.8f, 1.6f, tw);
+
+        glColor4f(b, b, b * 1.2f, b);
+        glVertex2f(sx, sy);
     }
 
     glEnd();
@@ -142,10 +222,9 @@ static void draw_fullscreen_sky()
 // ============================================================
 
 void draw_sky(
-    float /*time_seconds*/,
-    float /*camera_yaw*/,
-    float /*camera_pitch*/
-)
+    float time_seconds,
+    float camera_yaw,
+    float camera_pitch)
 {
     glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT);
 
@@ -154,6 +233,7 @@ void draw_sky(
     glDepthMask(GL_FALSE);
 
     draw_fullscreen_sky();
+    draw_stars(time_seconds, camera_yaw, camera_pitch);
 
     glDepthMask(GL_TRUE);
     glPopAttrib();
