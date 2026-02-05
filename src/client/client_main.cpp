@@ -796,8 +796,9 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         cam_distance = std::clamp(cam_distance, CAM_MIN, CAM_MAX);
 
 
-        constexpr float MOUSE_SENS = 0.0025f;
-        constexpr float ROLL_SENS = 0.0040f;
+        // Original: 0.0025f, 0.0040f
+        constexpr float MOUSE_SENS = 0.00180625f; // 0.0025 * 0.7225
+        constexpr float ROLL_SENS = 0.00289f;    // 0.0040 * 0.7225
 
         if (ctl.roll_modifier)
         {

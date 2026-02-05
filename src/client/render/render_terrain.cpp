@@ -570,15 +570,16 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 (dist < GRASS_LOD1_END) ? 8 : 4;
 
             int strands = int(base * density);
+            glBegin(GL_QUADS);
 
 
             for (int i = 0; i < strands; ++i) {
+
                 float angle = hash(x + i * 37, z + i * 41) * 6.28318f;
                 float radius = std::pow(hash(x + i * 11, z + i * 19), 0.7f) * 0.8f;
 
                 float ox = std::cos(angle) * radius;
                 float oz = std::sin(angle) * radius;
-
 
                 float px = wx + ox;
                 float pz = wz + oz;
@@ -597,23 +598,13 @@ static void draw_grass(float cam_x, float cam_z, float time)
                     lerp(0.45f, 1.25f,
                         hash(x * 23 + i * 3, z * 31 + i * 5));
 
-                grass_color(
-                    px, pz,
-                    h,
-                    field,
-                    wind,
-                    dist
-                );
-
+                grass_color(px, pz, h, field, wind, dist);
 
                 float gust =
                     noise(px * 0.25f + time * 0.15f,
                         pz * 0.25f + time * 0.12f);
 
                 float bend = (wind + gust * 0.6f) * 1.35f;
-
-
-                glBegin(GL_QUADS);
 
                 // X-facing quad
                 glTexCoord2f(0, 0); glVertex3f(px - GRASS_WIDTH, wy, pz);
@@ -626,9 +617,8 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 glTexCoord2f(1, 0); glVertex3f(px, wy, pz + GRASS_WIDTH);
                 glTexCoord2f(1, 1); glVertex3f(px + bend, wy + h, pz + GRASS_WIDTH);
                 glTexCoord2f(0, 1); glVertex3f(px + bend, wy + h, pz - GRASS_WIDTH);
-
-                glEnd();
             }
+            glEnd();  
         }
     }
 
