@@ -56,7 +56,7 @@ enum class TerrainZone {
 // Terrain tuning
 // ============================================================
 
-static constexpr int   GRID_SIZE = 96;
+static constexpr int   GRID_SIZE = 120;
 static constexpr float GRID_SCALE = 2.0f;
 static constexpr float HEIGHT_GAIN = 8.0f;
 
@@ -597,7 +597,7 @@ static void draw_tree(float x, float z, float time) {
     // ------------------------------
     // Trunk
     // ------------------------------
-    const float trunk_h = 8.5f * height_variation;
+    const float trunk_h = 40.5f * height_variation;
     const float trunk_r = 0.32f * height_variation;
 
     glColor3f(0.42f, 0.30f, 0.18f);
@@ -620,8 +620,10 @@ static void draw_tree(float x, float z, float time) {
     glDisable(GL_LIGHTING);
 
     const int BRANCHES = 7;
-    const float BRANCH_LEN = trunk_h * 0.5f;
-    const float BRANCH_R = trunk_r * 0.28f;
+    float giant_taper = std::clamp(trunk_h / 60.0f, 0.0f, 1.0f);
+    float branch_len = trunk_h * lerp(0.28f, 0.18f, giant_taper);
+    float branch_r = trunk_r * lerp(0.22f, 0.14f, giant_taper);
+
 
     glColor3f(0.40f, 0.28f, 0.18f);
 
@@ -642,18 +644,69 @@ static void draw_tree(float x, float z, float time) {
         float dx = std::cos(angle);
         float dz = std::sin(angle);
 
-        float ex = x + dx * BRANCH_LEN;
-        float ez = z + dz * BRANCH_LEN;
-        float ey = bh + BRANCH_LEN * tilt;
+        float ex = x + dx * branch_len;
+        float ez = z + dz * branch_len;
+        float ey = bh + branch_len * tilt;
+
+        // -------------------------------------------------
+// Branch foliage (prevents bare branches)
+// -------------------------------------------------
+        {
+            int leaf_clusters = 4 + int(giant_taper * 3); // more on giant trees
+
+            for (int k = 0; k < leaf_clusters; ++k) {
+
+                float la = hash(i * 91 + k * 17, int(x * 13 + z * 7)) * 6.28318f;
+                float lr = branch_len * lerp(0.08f, 0.15f, hash(k, i));
+                float lh = branch_len * lerp(0.05f, 0.18f, hash(i, k));
+
+                float tip_push = branch_len * 0.18f;
+                float lx = ex + std::cos(la) * lr;
+                float lz = ez + std::sin(la) * lr;
+                float ly = ey + lh;
+
+                float flower_size =
+                    trunk_h * lerp(0.018f, 0.028f, hash(k * 7, i * 11));
+
+
+                float tint = 0.9f + hash(k * 19, i * 23) * 0.1f;
+
+                glColor3f(
+                    (1.00f) * tint,   // bright pink
+                    (0.38f) * tint,
+                    (0.62f) * tint
+                );
+
+
+                glBegin(GL_QUADS);
+
+                // X-facing
+                glVertex3f(lx - flower_size, ly - flower_size * 0.5f, lz);
+                glVertex3f(lx + flower_size, ly - flower_size * 0.5f, lz);
+                glVertex3f(lx + flower_size, ly + flower_size * 0.5f, lz);
+                glVertex3f(lx - flower_size, ly + flower_size * 0.5f, lz);
+
+                // Z-facing
+                glVertex3f(lx, ly - flower_size * 0.5f, lz - flower_size);
+                glVertex3f(lx, ly - flower_size * 0.5f, lz + flower_size);
+                glVertex3f(lx, ly + flower_size * 0.5f, lz + flower_size);
+                glVertex3f(lx, ly + flower_size * 0.5f, lz - flower_size);
+
+
+                glEnd();
+            }
+        }
+
 
         glBegin(GL_QUADS);
 
-        glVertex3f(x - dz * BRANCH_R, bh, z + dx * BRANCH_R);
-        glVertex3f(x + dz * BRANCH_R, bh, z - dx * BRANCH_R);
-        float tip_r = BRANCH_R * 0.45f;
+        glVertex3f(x - dz * branch_r, bh, z + dx * branch_r);
+        glVertex3f(x + dz * branch_r, bh, z - dx * branch_r);
+        float tip_r = branch_r * 0.45f;
 
         glVertex3f(ex + dz * tip_r, ey, ez - dx * tip_r);
         glVertex3f(ex - dz * tip_r, ey, ez + dx * tip_r);
+
 
 
         glEnd();
@@ -671,11 +724,13 @@ static void draw_tree(float x, float z, float time) {
 
     glDepthMask(GL_TRUE);   // IMPORTANT
 
-    const int CLUSTERS = int(36 * height_variation);
+    const int CLUSTERS = int(28 * height_variation);
+
 
     // Canopy starts ON the trunk, not floating above it
     const float CANOPY_BASE = trunk_h * 0.78f;
-    const float CANOPY_R = 3.6f * height_variation;
+    const float CANOPY_R = trunk_h * 0.18f;
+
 
 
     for (int i = 0; i < CLUSTERS; ++i) {
@@ -686,7 +741,8 @@ static void draw_tree(float x, float z, float time) {
 
         float theta = ha * 6.28318f;
         float radius = CANOPY_R * (0.35f + hb * 0.65f);
-        float height = CANOPY_BASE + hb * 4.5f;
+        float height = CANOPY_BASE + hb * trunk_h * 0.35f;
+
 
 
         float sway =
@@ -705,17 +761,18 @@ static void draw_tree(float x, float z, float time) {
         }
 
 
-        float size = 1.3f + hb * 1.6f;
+        float size = trunk_h * lerp(0.035f, 0.055f, hb);
+
 
 
         float tint = 0.85f + hb * 0.15f;
 
-        // Pink leaves
         glColor3f(
-            (0.95f + hb * 0.05f) * tint,   // R
-            (0.45f + hb * 0.10f) * tint,   // G
-            (0.65f + hb * 0.15f) * tint    // B
+            (1.00f)* tint,   // warm yellow
+            (0.78f)* tint,   // soft orange
+            (0.48f)* tint    // hint of peach
         );
+
 
 
         glBegin(GL_QUADS);
@@ -743,9 +800,10 @@ static void draw_tree(float x, float z, float time) {
 
 static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
-    constexpr int   TREE_RADIUS = 32;     // tiles
-    constexpr float TREE_FADE_START = 110.0f;
-    constexpr float TREE_FADE_END = 145.0f;
+    constexpr int   TREE_RADIUS = 60;     // tiles
+    constexpr float TREE_FADE_START = 160.0f;
+    constexpr float TREE_FADE_END = 220.0f;
+
 
     int cx = stable_cell(anchor_x);
     int cz = stable_cell(anchor_z);
@@ -825,8 +883,8 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
         GLfloat fogColor[] = { 0.72f, 0.82f, 0.92f, 1.0f };
         glFogfv(GL_FOG_COLOR, fogColor);
         glFogf(GL_FOG_MODE, GL_LINEAR);
-        glFogf(GL_FOG_START, 50.0f);
-        glFogf(GL_FOG_END, 110.0f);
+        glFogf(GL_FOG_START, 120.0f);
+        glFogf(GL_FOG_END, 260.0f);
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
