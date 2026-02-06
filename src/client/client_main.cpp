@@ -851,6 +851,21 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         controls_update();
         const ControlState& ctl = controls_get();
+
+        if (active_vehicle == ActiveVehicle::Drone)
+        {
+            bool moving =
+                std::fabs(ctl.forward) > 0.01f ||
+                std::fabs(ctl.strafe) > 0.01f;
+
+            audio_on_drone_move(moving, ctl.boost);
+        }
+        else
+        {
+            // ensure drone sound stops when not controlling drone
+            audio_on_drone_move(false, false);
+        }
+
         constexpr float ZOOM_SPEED = 1.2f;
 
         cam_distance -= ctl.zoom_delta * ZOOM_SPEED;

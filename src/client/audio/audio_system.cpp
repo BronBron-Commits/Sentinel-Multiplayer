@@ -20,13 +20,6 @@ constexpr int DRONE_BASE_VOLUME = MIX_MAX_VOLUME / 5;
 // ------------------------------------------------------------
 bool audio_init()
 {
-    // Only initialize codecs we actually use
-    int flags = MIX_INIT_OGG;
-    if ((Mix_Init(flags) & flags) != flags) {
-        printf("[audio] Mix_Init failed: %s\n", Mix_GetError());
-        return false;
-    }
-
     if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
         printf("[audio] Mix_OpenAudio failed: %s\n", Mix_GetError());
         return false;
@@ -34,18 +27,19 @@ bool audio_init()
 
     Mix_AllocateChannels(16);
 
-    // Load SFX only (NO MUSIC)
     g_drone_move_sfx = Mix_LoadWAV("assets/audio/drone_move.wav");
-    g_drone_move_boost_sfx = Mix_LoadWAV("assets/audio/drone_move_boost.wav");
-
-    if (!g_drone_move_sfx)
+    if (!g_drone_move_sfx) {
         printf("[audio] Failed to load drone_move.wav: %s\n", Mix_GetError());
+    }
 
-    if (!g_drone_move_boost_sfx)
+    g_drone_move_boost_sfx = Mix_LoadWAV("assets/audio/drone_move_boost.wav");
+    if (!g_drone_move_boost_sfx) {
         printf("[audio] Failed to load drone_move_boost.wav: %s\n", Mix_GetError());
+    }
 
     return true;
 }
+
 
 // ------------------------------------------------------------
 // Runtime update
@@ -70,10 +64,8 @@ void audio_on_drone_move(bool moving, bool boost)
             g_boost_active = boost;
         }
 
-        Mix_Volume(
-            g_drone_move_channel,
-            boost ? MIX_MAX_VOLUME : DRONE_BASE_VOLUME
-        );
+        Mix_Volume(g_drone_move_channel, DRONE_BASE_VOLUME);
+
     }
     else {
         if (g_drone_move_channel != -1) {
