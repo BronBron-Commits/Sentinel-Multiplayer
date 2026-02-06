@@ -22,7 +22,7 @@ constexpr float SIDE_GRIP_FRONT = 5.0f;   // steering tires (slippy)
 constexpr float SIDE_GRIP_REAR = 16.0f;  // stabilizing tires (strong)
 
 // Camera
-constexpr float CAM_HEIGHT = 8.5f;
+constexpr float CAM_HEIGHT = 17.0f;
 constexpr float CAM_LOOK = 4.5f;
 constexpr float CAM_AHEAD = 6.0f;
 constexpr float CAM_LAG = 10.0f;
@@ -75,7 +75,7 @@ void warthog_update(
         1.0f - std::clamp(std::abs(w.speed) / MAX_SPEED, 0.0f, 0.7f);
 
     float target_steer =
-        ctl.strafe * MAX_STEER_RAD * speed_factor;
+        -ctl.strafe * MAX_STEER_RAD * speed_factor;
 
     w.steer_angle +=
         (target_steer - w.steer_angle) * STEER_SPEED * dt;
