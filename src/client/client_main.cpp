@@ -51,6 +51,8 @@
 
 #include "util/math_util.hpp"
 
+static SDL_GameController* g_controller = nullptr;
+
 // ============================================================
 // Warthog camera orbit globals (DEFINED HERE)
 // ============================================================
@@ -664,12 +666,30 @@ int main()
 
     setbuf(stdout, nullptr);
 
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
+
+// ------------------------------------------------------------
+// GameController detection (Xbox)
+// ------------------------------------------------------------
+    if (SDL_NumJoysticks() > 0) {
+        if (SDL_IsGameController(0)) {
+            g_controller = SDL_GameControllerOpen(0);
+            if (g_controller) {
+                printf("[input] GameController opened: %s\n",
+                    SDL_GameControllerName(g_controller));
+            }
+            else {
+                printf("[input] Failed to open controller: %s\n",
+                    SDL_GetError());
+            }
+        }
+    }
+
 
     if (!audio_init()) {
         printf("[audio] audio_init failed\n");
     }
-
+     
 
 
     if (TTF_Init() != 0) {
@@ -808,11 +828,32 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
     while (running) {
 
+
+
+
         // ===============================
         // SDL EVENT PUMP (REQUIRED)
         // ===============================
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+
+// ------------------------------------------------------------
+// GameController hot-plug
+// ------------------------------------------------------------
+            if (e.type == SDL_CONTROLLERDEVICEADDED) {
+                if (!g_controller && SDL_IsGameController(e.cdevice.which)) {
+                    g_controller = SDL_GameControllerOpen(e.cdevice.which);
+                    printf("[input] Controller connected\n");
+                }
+            }
+
+            if (e.type == SDL_CONTROLLERDEVICEREMOVED) {
+                if (g_controller) {
+                    SDL_GameControllerClose(g_controller);
+                    g_controller = nullptr;
+                    printf("[input] Controller disconnected\n");
+                }
+            }
 
             if (e.type == SDL_QUIT) {
                 running = false;
