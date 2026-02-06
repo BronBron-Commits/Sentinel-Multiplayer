@@ -1,7 +1,7 @@
 #include "input/control_system.hpp"
 #include <SDL_gamecontroller.h>
-
 #include <SDL.h>
+
 #include <cstring>
 #include <cmath>
 
@@ -16,6 +16,7 @@ static bool g_move_rumble_active = false;
 // ------------------------------------------------------------
 constexpr float GAMEPAD_DEADZONE = 0.18f;
 constexpr float GAMEPAD_LOOK_SENS = 100.0f;
+constexpr float GAMEPAD_ZOOM_STEP = 1.0f; // same scale as mouse wheel
 
 // ------------------------------------------------------------
 // Controller handle
@@ -49,7 +50,7 @@ void controls_init()
 }
 
 // ------------------------------------------------------------
-// Per-frame update (keyboard + controller)
+// Per-frame update
 // ------------------------------------------------------------
 void controls_update(bool ui_blocked)
 {
@@ -96,7 +97,7 @@ void controls_update(bool ui_blocked)
             return;
 
         // --------------------------------------------------------
-        // Left stick = movement
+        // Left stick = movement (STRAFE SIGN RESTORED)
         // --------------------------------------------------------
         float lx = SDL_GameControllerGetAxis(
             pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
@@ -106,7 +107,10 @@ void controls_update(bool ui_blocked)
         lx = apply_deadzone(lx);
         ly = apply_deadzone(ly);
 
-        g_control.strafe -= -lx;
+        // ORIGINAL behavior:
+        //  - pushing stick right -> positive strafe
+        //  - pushing stick up    -> positive forward
+        g_control.strafe -= -lx;   // == +lx
         g_control.forward += -ly;
 
         // --------------------------------------------------------
@@ -119,30 +123,7 @@ void controls_update(bool ui_blocked)
         g_control.boost = g_control.boost || boosting;
 
         // --------------------------------------------------------
-        // Light rumble while moving (left stick)
-        // --------------------------------------------------------
-        bool moving =
-            std::fabs(lx) > 0.01f ||
-            std::fabs(ly) > 0.01f;
-
-        if (moving && !boosting && !g_move_rumble_active)
-        {
-            SDL_GameControllerRumble(
-                pad,
-                2500,   // very light low freq
-                1200,   // subtle texture
-                120
-            );
-            g_move_rumble_active = true;
-        }
-        else if (!moving && g_move_rumble_active && !boosting)
-        {
-            SDL_GameControllerRumble(pad, 0, 0, 0);
-            g_move_rumble_active = false;
-        }
-
-        // --------------------------------------------------------
-        // Right stick = camera
+        // Right stick = camera look
         // --------------------------------------------------------
         float rx = SDL_GameControllerGetAxis(
             pad, SDL_CONTROLLER_AXIS_RIGHTX) / 32767.0f;
@@ -156,7 +137,16 @@ void controls_update(bool ui_blocked)
         g_control.look_dy += ry * GAMEPAD_LOOK_SENS;
 
         // --------------------------------------------------------
-        // Rumble while boosting (override)
+        // Bumpers = camera zoom (mouse wheel equivalent)
+        // --------------------------------------------------------
+        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER))
+            g_control.zoom_delta -= GAMEPAD_ZOOM_STEP;
+
+        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER))
+            g_control.zoom_delta += GAMEPAD_ZOOM_STEP;
+
+        // --------------------------------------------------------
+        // Rumble while boosting
         // --------------------------------------------------------
         if (boosting)
         {
@@ -174,7 +164,7 @@ void controls_update(bool ui_blocked)
 }
 
 // ------------------------------------------------------------
-// Mouse input (unchanged)
+// Mouse input
 // ------------------------------------------------------------
 void controls_on_mouse_motion(float dx, float dy)
 {
@@ -198,19 +188,9 @@ void controls_end_frame()
 }
 
 // ------------------------------------------------------------
-// Accessors
+// Accessor
 // ------------------------------------------------------------
 const ControlState& controls_get()
 {
     return g_control;
-}
-
-ControlState& controls_get_mutable()
-{
-    return g_control;
-}
-
-void controls_set_gamepad(SDL_GameController* pad)
-{
-    g_controller = pad;
 }
