@@ -57,22 +57,20 @@ static void draw_unit_cube()
 }
 
 // ============================================================
-// Wheel mesh (cylinder, XZ plane)
+// Wheel mesh
 // ============================================================
 
 static void draw_wheel_mesh()
 {
-    constexpr int   SEG = 20;
+    constexpr int SEG = 20;
     constexpr float R = 0.5f;
     constexpr float W = 0.35f;
 
     glBegin(GL_QUAD_STRIP);
-    for (int i = 0; i <= SEG; i++)
-    {
+    for (int i = 0; i <= SEG; i++) {
         float a = float(i) / SEG * 6.2831853f;
         float x = std::cos(a) * R;
         float z = std::sin(a) * R;
-
         glNormal3f(x, 0, z);
         glVertex3f(x, -W, z);
         glVertex3f(x, W, z);
@@ -81,7 +79,7 @@ static void draw_wheel_mesh()
 }
 
 // ============================================================
-// Sub-assemblies
+// Sub assemblies
 // ============================================================
 
 static void draw_chassis()
@@ -101,59 +99,76 @@ static void draw_cabin()
     glPopMatrix();
 }
 
-static void draw_single_wheel(float steer_rad)
+static void draw_single_wheel(float steer)
 {
-    glRotatef(90.0f, 0, 0, 1);                // stand wheel upright
-    glRotatef(steer_rad * 57.2958f, 0, 1, 0);   // steering
+    glRotatef(90.0f, 0, 0, 1);
+    glRotatef(steer * 57.2958f, 0, 1, 0);
     draw_wheel_mesh();
 }
 
 static void draw_wheels(float steer)
 {
     constexpr float WX = 0.95f;
-    constexpr float WY = -0.15f;   // lifted above ground
+    constexpr float WY = -0.15f;
     constexpr float WF = 1.45f;
     constexpr float WR = -1.45f;
 
-    warthog_shader_set_color(0.08f, 0.08f, 0.08f); // rubber
+    GLfloat diff[] = { 0.05f,0.05f,0.05f,1.0f };
+    GLfloat spec[] = { 0.02f,0.02f,0.02f,1.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, diff);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spec);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 12.0f);
 
     glPushMatrix(); glTranslatef(-WX, WY, WF); draw_single_wheel(steer); glPopMatrix();
     glPushMatrix(); glTranslatef(WX, WY, WF); draw_single_wheel(steer); glPopMatrix();
-    glPushMatrix(); glTranslatef(-WX, WY, WR); draw_single_wheel(0);     glPopMatrix();
-    glPushMatrix(); glTranslatef(WX, WY, WR); draw_single_wheel(0);     glPopMatrix();
+    glPushMatrix(); glTranslatef(-WX, WY, WR); draw_single_wheel(0); glPopMatrix();
+    glPushMatrix(); glTranslatef(WX, WY, WR); draw_single_wheel(0); glPopMatrix();
 }
 
 // ============================================================
-// Public render entry
+// Internal render
 // ============================================================
 
-static void render_warthog_internal(
-    float x, float y, float z,
-    float yaw, float steer)
+static void render_warthog_internal(float x, float y, float z, float yaw, float steer)
 {
     constexpr float SCALE = 5.0f;
+
+    glPushAttrib(GL_ENABLE_BIT | GL_LIGHTING_BIT | GL_CURRENT_BIT);
+    glDisable(GL_COLOR_MATERIAL);
+    glEnable(GL_LIGHTING);
+
+    GLfloat amb[] = { 0.06f,0.06f,0.07f,1.0f };
+    GLfloat dif[] = { 0.10f,0.11f,0.12f,1.0f };
+    GLfloat spc[] = { 0.95f,0.95f,0.95f,1.0f };
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, amb);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, dif);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spc);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 96.0f);
 
     glPushMatrix();
     glTranslatef(x, y, z);
     glRotatef(yaw * 57.2958f, 0, 1, 0);
     glScalef(SCALE, SCALE, SCALE);
 
-    warthog_shader_bind();
-    warthog_shader_set_light(0.4f, 1.0f, 0.2f);
-    warthog_shader_set_color(0.55f, 0.58f, 0.6f);
-
     draw_chassis();
     draw_cabin();
     draw_wheels(steer);
 
-    warthog_shader_unbind();
     glPopMatrix();
+    glPopAttrib();
 }
+
+// ============================================================
+// Public API
+// ============================================================
 
 void render_warthog(const WarthogState& w)
 {
     render_warthog_internal(
-        w.x, w.y, w.z,
+        w.x,
+        w.y,
+        w.z,
         w.yaw,
         w.steer_angle
     );
