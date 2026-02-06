@@ -1,107 +1,161 @@
 #include "input/control_system.hpp"
+#include <SDL_gamecontroller.h>
+
 #include <SDL.h>
 #include <cstring>
+#include <cmath>
+
+static SDL_GameController* g_controller = nullptr;
 
 // ------------------------------------------------------------
-// Global control state (one per client)
+// Tuning
 // ------------------------------------------------------------
-static ControlState g_state;
+constexpr float GAMEPAD_DEADZONE = 0.18f;
 
 // ------------------------------------------------------------
-// Global control state (PRIVATE TO THIS FILE)
+// Global control state (SINGLE SOURCE OF TRUTH)
 // ------------------------------------------------------------
 static ControlState g_control{};
+
+// ------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------
+static float apply_deadzone(float v)
+{
+    if (std::fabs(v) < GAMEPAD_DEADZONE)
+        return 0.0f;
+
+    return (v > 0.0f)
+        ? (v - GAMEPAD_DEADZONE) / (1.0f - GAMEPAD_DEADZONE)
+        : (v + GAMEPAD_DEADZONE) / (1.0f - GAMEPAD_DEADZONE);
+}
 
 // ------------------------------------------------------------
 // Init (called once at startup)
 // ------------------------------------------------------------
 void controls_init()
 {
-    std::memset(&g_state, 0, sizeof(g_state));
+    std::memset(&g_control, 0, sizeof(g_control));
 }
 
 // ------------------------------------------------------------
-// Keyboard state (called once per frame)
+// Per-frame update (keyboard + controller)
 // ------------------------------------------------------------
 void controls_update(bool ui_blocked)
 {
-    // Reset movement every frame
-    g_state.forward = 0.0f;
-    g_state.strafe = 0.0f;
-    g_state.vertical = 0.0f;
-    g_state.fire = false;
-    g_state.boost = false;
+    // Reset per-frame state
+    g_control.forward = 0.0f;
+    g_control.strafe = 0.0f;
+    g_control.vertical = 0.0f;
+    g_control.fire = false;
+    g_control.boost = false;
 
-    // If UI is blocking gameplay input, stop here
     if (ui_blocked)
         return;
 
+    // ------------------------------------------------------------
+    // Keyboard
+    // ------------------------------------------------------------
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
 
-    // Forward / backward (thrust)
-    if (keys[SDL_SCANCODE_W]) g_state.forward += 1.0f;
-    if (keys[SDL_SCANCODE_S]) g_state.forward -= 1.0f;
+    if (keys[SDL_SCANCODE_W]) g_control.forward += 1.0f;
+    if (keys[SDL_SCANCODE_S]) g_control.forward -= 1.0f;
 
-    // Strafe (optional, yaw-plane only)
-    if (keys[SDL_SCANCODE_D]) g_state.strafe += 1.0f;
-    if (keys[SDL_SCANCODE_A]) g_state.strafe -= 1.0f;
+    if (keys[SDL_SCANCODE_D]) g_control.strafe += 1.0f;
+    if (keys[SDL_SCANCODE_A]) g_control.strafe -= 1.0f;
 
-    // Vertical (legacy / optional)
-    if (keys[SDL_SCANCODE_E]) g_state.vertical += 1.0f;
-    if (keys[SDL_SCANCODE_Q]) g_state.vertical -= 1.0f;
+    if (keys[SDL_SCANCODE_E]) g_control.vertical += 1.0f;
+    if (keys[SDL_SCANCODE_Q]) g_control.vertical -= 1.0f;
 
-    // Boost
     if (keys[SDL_SCANCODE_LSHIFT])
-        g_state.boost = true;
+        g_control.boost = true;
 
-    // Fire
     if (keys[SDL_SCANCODE_SPACE])
-        g_state.fire = true;
+        g_control.fire = true;
+
+    g_control.roll_modifier =
+        (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
 
     // ------------------------------------------------------------
-    // Middle mouse button = roll modifier
+    // GameController (Xbox)
     // ------------------------------------------------------------
-    g_state.roll_modifier =
-        (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
+    if (SDL_NumJoysticks() > 0 && SDL_IsGameController(0))
+    {
+        SDL_GameController* pad = SDL_GameControllerOpen(0);
+        if (pad)
+        {
+            // Left stick = movement
+            float lx = SDL_GameControllerGetAxis(
+                pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
+            float ly = SDL_GameControllerGetAxis(
+                pad, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
+
+            lx = apply_deadzone(lx);
+            ly = apply_deadzone(ly);
+
+            g_control.strafe += lx;
+            g_control.forward += -ly;
+
+            // Right stick = camera
+            float rx = SDL_GameControllerGetAxis(
+                pad, SDL_CONTROLLER_AXIS_RIGHTX) / 32767.0f;
+            float ry = SDL_GameControllerGetAxis(
+                pad, SDL_CONTROLLER_AXIS_RIGHTY) / 32767.0f;
+
+            rx = apply_deadzone(rx);
+            ry = apply_deadzone(ry);
+
+            g_control.look_dx += rx;
+            g_control.look_dy += ry;
+
+            // Right trigger = boost
+            float rt = SDL_GameControllerGetAxis(
+                pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.0f;
+
+            if (rt > 0.5f)
+                g_control.boost = true;
+        }
+    }
 }
 
-
 // ------------------------------------------------------------
-// Mouse motion (called from SDL_PollEvent)
+// Mouse input (called from SDL_PollEvent)
 // ------------------------------------------------------------
 void controls_on_mouse_motion(float dx, float dy)
 {
-    // Accumulate mouse deltas for THIS frame
-    g_state.look_dx += dx;
-    g_state.look_dy += dy;
+    g_control.look_dx += dx;
+    g_control.look_dy += dy;
 }
 
 void controls_on_mouse_wheel(float y)
 {
-    g_state.zoom_delta += y;
+    g_control.zoom_delta += y;
 }
 
-
 // ------------------------------------------------------------
-// End of frame (called AFTER using look_dx/look_dy)
+// End of frame (clear deltas)
 // ------------------------------------------------------------
 void controls_end_frame()
 {
-    g_state.look_dx = 0.0f;
-    g_state.look_dy = 0.0f;
-    g_state.zoom_delta = 0.0f;
+    g_control.look_dx = 0.0f;
+    g_control.look_dy = 0.0f;
+    g_control.zoom_delta = 0.0f;
 }
 
-
 // ------------------------------------------------------------
-// Access current control state
+// Accessors
 // ------------------------------------------------------------
 const ControlState& controls_get()
 {
-    return g_state;
+    return g_control;
 }
 
 ControlState& controls_get_mutable()
 {
     return g_control;
+}
+
+void controls_set_gamepad(SDL_GameController* pad)
+{
+    g_controller = pad;
 }

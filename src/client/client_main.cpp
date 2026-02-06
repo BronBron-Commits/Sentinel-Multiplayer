@@ -991,35 +991,6 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         controls_update();
 
-        // ------------------------------------------------------------
-// Xbox controller input → ControlState
-// ------------------------------------------------------------
-        if (g_controller)
-        {
-            ControlState& ctl = controls_get_mutable(); // we will add this if needed
-
-            float lx = axis_norm(SDL_GameControllerGetAxis(
-                g_controller, SDL_CONTROLLER_AXIS_LEFTX));
-
-            float ly = axis_norm(SDL_GameControllerGetAxis(
-                g_controller, SDL_CONTROLLER_AXIS_LEFTY));
-
-            float rx = axis_norm(SDL_GameControllerGetAxis(
-                g_controller, SDL_CONTROLLER_AXIS_RIGHTX));
-
-            float rt = SDL_GameControllerGetAxis(
-                g_controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.0f;
-
-            // Movement
-            ctl.strafe += lx;
-            ctl.forward += -ly; // invert Y
-
-            // Camera / yaw
-            camera_yaw += rx * 2.2f * dt;
-
-            // Boost
-            ctl.boost = ctl.boost || (rt > 0.5f);
-        }
 
         const ControlState& ctl = controls_get();
 
