@@ -93,7 +93,7 @@ void controls_update(bool ui_blocked)
             lx = apply_deadzone(lx);
             ly = apply_deadzone(ly);
 
-            g_control.strafe += lx;
+            g_control.strafe -= -lx;
             g_control.forward += -ly;
 
             // Right stick = camera
