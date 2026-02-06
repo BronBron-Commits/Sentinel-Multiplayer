@@ -27,6 +27,7 @@
 #include "vehicles/warthog/warthog_controller.hpp"
 #include "vehicles/warthog/render_warthog.hpp"
 
+#include "render/warthog_shader.hpp"
 #include "render/render_terrain.hpp"
 #include "render/render_drone_shader.hpp"
 #include "render/render_sky.hpp"
@@ -657,6 +658,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     init_drone_mesh();
     combat_fx_init();
     controls_init();
+    warthog_shader_init();
 
     SDL_GL_SetSwapInterval(1);
 

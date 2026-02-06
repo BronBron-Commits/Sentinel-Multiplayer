@@ -37,3 +37,4 @@ void warthog_update_camera(
     float dt
 );
 
+void render_warthog(const WarthogState& w);

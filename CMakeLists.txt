@@ -68,6 +68,8 @@ add_executable(client
     src/client/vehicles/drone/drone_controller.cpp
     src/client/vehicles/warthog/warthog_controller.cpp
     src/client/vehicles/warthog/render_warthog.cpp
+    src/client/render/warthog_shader.cpp
+
 )
 
 target_include_directories(client PRIVATE
