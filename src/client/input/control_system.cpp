@@ -1,4 +1,4 @@
-#include "client/input/control_system.hpp"
+#include "input/control_system.hpp"
 #include <SDL.h>
 #include <cstring>
 
@@ -6,6 +6,11 @@
 // Global control state (one per client)
 // ------------------------------------------------------------
 static ControlState g_state;
+
+// ------------------------------------------------------------
+// Global control state (PRIVATE TO THIS FILE)
+// ------------------------------------------------------------
+static ControlState g_control{};
 
 // ------------------------------------------------------------
 // Init (called once at startup)
@@ -94,4 +99,9 @@ void controls_end_frame()
 const ControlState& controls_get()
 {
     return g_state;
+}
+
+ControlState& controls_get_mutable()
+{
+    return g_control;
 }

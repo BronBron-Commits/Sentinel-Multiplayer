@@ -26,3 +26,4 @@ void controls_end_frame();
 void controls_on_mouse_wheel(float y);
 
 const ControlState& controls_get();
+ControlState& controls_get_mutable();
