@@ -5,6 +5,8 @@
 #include <cstring>
 #include <cmath>
 
+constexpr float GAMEPAD_LOOK_SENS = 100.0f; // try 4–8 range
+
 static SDL_GameController* g_controller = nullptr;
 
 // ------------------------------------------------------------
@@ -105,8 +107,9 @@ void controls_update(bool ui_blocked)
             rx = apply_deadzone(rx);
             ry = apply_deadzone(ry);
 
-            g_control.look_dx += rx;
-            g_control.look_dy += ry;
+            g_control.look_dx += rx * GAMEPAD_LOOK_SENS;
+            g_control.look_dy += ry * GAMEPAD_LOOK_SENS;
+
 
             // Right trigger = boost
             float rt = SDL_GameControllerGetAxis(
