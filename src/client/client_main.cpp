@@ -26,6 +26,8 @@
 #include "vehicles/drone/drone_controller.hpp"
 #include "vehicles/warthog/warthog_controller.hpp"
 #include "vehicles/warthog/render_warthog.hpp"
+#include "vehicles/walker/walker_controller.hpp"
+#include "vehicles/walker/render_walker.hpp"
 
 #include "render/warthog_shader.hpp"
 #include "render/render_terrain.hpp"
@@ -71,7 +73,8 @@ bool  warthog_orbit_active = false;
 
 enum class ActiveVehicle {
     Drone,
-    Warthog
+    Warthog,
+    Walker
 };
 
 static ActiveVehicle active_vehicle = ActiveVehicle::Drone;
@@ -105,6 +108,7 @@ static bool prev_space = false;
 // ------------------------------------------------------------
 static DroneState drone{};
 static WarthogState warthog{};
+static WalkerState walker{};
 
 static void get_billboard_axes(
     const Camera& cam,
@@ -827,6 +831,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     Camera cam{};
     drone_init(drone);
     warthog_init(warthog);
+    walker_init(walker);
 
     // Track which players are "ready to render"
     std::unordered_map<uint32_t, bool> has_remote;
@@ -889,6 +894,8 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                             name_buffer.pop_back();
                     }
 
+
+
                     // --------------------------------------------------
 // Warthog camera orbit (middle mouse)
 // --------------------------------------------------
@@ -940,6 +947,11 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                 if (e.key.keysym.sym == SDLK_2) {
                     active_vehicle = ActiveVehicle::Warthog;
                 }
+
+                if (e.key.keysym.sym == SDLK_3) {
+                    active_vehicle = ActiveVehicle::Walker;
+                }
+
             }
 
             if (e.type == SDL_MOUSEMOTION)
@@ -1048,9 +1060,13 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         if (active_vehicle == ActiveVehicle::Drone) {
             drone_update(drone, ctl, dt, camera_yaw);
         }
-        else {
+        else if (active_vehicle == ActiveVehicle::Warthog) {
             warthog_update(warthog, ctl, dt);
         }
+        else { // Walker
+            walker_update(walker, ctl, dt);
+        }
+
 
         controls_end_frame();
 
@@ -1102,12 +1118,19 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                 out.z = drone.z;
                 out.yaw = drone.yaw;
             }
-            else {
+            else if (active_vehicle == ActiveVehicle::Warthog) {
                 out.x = warthog.x;
                 out.y = warthog.y;
                 out.z = warthog.z;
                 out.yaw = warthog.yaw;
             }
+            else {
+                out.x = walker.x;
+                out.y = walker.y;
+                out.z = walker.z;
+                out.yaw = walker.yaw;
+            }
+
 
             out.server_time = now * 0.001;
 
@@ -1121,9 +1144,13 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         if (active_vehicle == ActiveVehicle::Drone) {
             drone_update_camera(drone, cam, cam_distance);
         }
-        else {
+        else if (active_vehicle == ActiveVehicle::Warthog) {
             warthog_update_camera(warthog, cam, cam_distance, dt);
         }
+        else {
+            walker_update_camera(walker, cam, cam_distance);
+        }
+
 
 
 
@@ -1336,8 +1363,11 @@ render_trail_particles(cam);
 
             glPopMatrix();
         }
-        else {
+        else if (active_vehicle == ActiveVehicle::Warthog) {
             render_warthog(warthog);
+        }
+        else {
+            render_walker(walker);
         }
 
 

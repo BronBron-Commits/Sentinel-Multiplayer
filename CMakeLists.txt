@@ -69,7 +69,8 @@ add_executable(client
     src/client/vehicles/warthog/warthog_controller.cpp
     src/client/vehicles/warthog/render_warthog.cpp
     src/client/render/warthog_shader.cpp
-
+    src/client/vehicles/walker/walker_controller.cpp
+    src/client/vehicles/walker/render_walker.cpp
 )
 
 target_include_directories(client PRIVATE
