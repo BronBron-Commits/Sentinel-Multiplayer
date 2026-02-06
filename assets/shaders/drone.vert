@@ -6,12 +6,12 @@ layout (location = 1) in vec3 aNormal;
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProj;
+uniform vec3 uCameraPos;
 
 out vec3 vWorldPos;
 out vec3 vNormal;
 out vec3 vViewDir;
-
-uniform vec3 uCameraPos;
+out vec2 vUV;
 
 void main()
 {
@@ -22,6 +22,9 @@ void main()
     vNormal = normalize(normalMat * aNormal);
 
     vViewDir = normalize(uCameraPos - vWorldPos);
+
+    // Stable planar UVs (vehicle-safe)
+    vUV = vWorldPos.xz * 0.15;
 
     gl_Position = uProj * uView * world;
 }

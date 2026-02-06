@@ -95,6 +95,12 @@ static constexpr int   GRID_SIZE = 120;
 static constexpr float GRID_SCALE = 2.0f;
 static constexpr float HEIGHT_GAIN = 8.0f;
 
+// ============================================================
+// Road tuning
+// ============================================================
+
+static constexpr float ROAD_HALF_WIDTH = 12.0f;  // was effectively ~3.0
+static constexpr float ROAD_SHOULDER = 4.0f;   // soft blend zone
 
 
 
@@ -339,8 +345,9 @@ static float terrain_slope(float ny) {
 
 static float path_distance(float x, float z) {
     float path_x = std::sin(z * 0.05f) * 10.0f;
-    return std::fabs(x - path_x);
+    return std::fabs(x - path_x) * 0.5f; // ⬅️ DOUBLE PATH WIDTH
 }
+
 
 // ============================================================
 // Zone logic
@@ -350,8 +357,9 @@ static TerrainZone classify_zone(float height, float slope, float dist) {
     if (slope > 0.6f || height > 6.0f)
         return TerrainZone::Rock;
 
-    if (dist < 3.0f)
+    if (dist < ROAD_HALF_WIDTH)
         return TerrainZone::Dirt;
+
 
     return TerrainZone::Grass;
 }
@@ -894,8 +902,9 @@ static void draw_tree(
 
 
     // Keep trees away from path
-    if (path_distance(x, z) < 4.5f)
+    if (path_distance(x, z) < ROAD_HALF_WIDTH + 2.0f)
         return;
+
 
     float y = height_at(x, z);
     float wind = tree_wind(x, z, time);
@@ -1433,8 +1442,12 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
                         }
 
                         float dist = path_distance(wx, wz);
-                        if (dist < 2.5f)
-                            wy -= (2.5f - dist) * 0.6f;
+                        if (dist < ROAD_HALF_WIDTH)
+                        {
+                            float t = (ROAD_HALF_WIDTH - dist) / ROAD_HALF_WIDTH;
+                            wy -= t * 1.2f;   // slightly deeper for vehicles
+                        }
+
 
                         // ---------- NORMAL LOD ----------
                         float nx = 0.0f, ny = 1.0f, nz = 0.0f;
@@ -1447,7 +1460,11 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
                         set_zone_color(zone, wy, slope, wx, wz);
 
-                        float dirt_blend = smooth_zone(dist - 2.0f, 2.5f);
+                        float dirt_blend = smooth_zone(
+                            dist - (ROAD_HALF_WIDTH - ROAD_SHOULDER),
+                            ROAD_SHOULDER
+                        );
+
                         if (dirt_blend < 1.0f) {
                             glColor3f(
                                 lerp(0.42f, 0.30f, dirt_blend),
