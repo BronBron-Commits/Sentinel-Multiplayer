@@ -111,11 +111,11 @@ void controls_update(bool ui_blocked)
             g_control.look_dy += ry * GAMEPAD_LOOK_SENS;
 
 
-            // Right trigger = boost
-            float rt = SDL_GameControllerGetAxis(
-                pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.0f;
+            // left trigger = boost
+            float lt = SDL_GameControllerGetAxis(
+                pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.0f;
 
-            if (rt > 0.5f)
+            if (lt > 0.5f)
                 g_control.boost = true;
         }
     }
