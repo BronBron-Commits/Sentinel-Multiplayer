@@ -5,16 +5,22 @@
 #include <cstring>
 #include <cmath>
 
+// ------------------------------------------------------------
+// Rumble state
+// ------------------------------------------------------------
 static bool g_rumble_active = false;
-
-constexpr float GAMEPAD_LOOK_SENS = 100.0f; // try 4–8 range
-
-static SDL_GameController* g_controller = nullptr;
+static bool g_move_rumble_active = false;
 
 // ------------------------------------------------------------
 // Tuning
 // ------------------------------------------------------------
 constexpr float GAMEPAD_DEADZONE = 0.18f;
+constexpr float GAMEPAD_LOOK_SENS = 100.0f;
+
+// ------------------------------------------------------------
+// Controller handle
+// ------------------------------------------------------------
+static SDL_GameController* g_controller = nullptr;
 
 // ------------------------------------------------------------
 // Global control state (SINGLE SOURCE OF TRUTH)
@@ -35,7 +41,7 @@ static float apply_deadzone(float v)
 }
 
 // ------------------------------------------------------------
-// Init (called once at startup)
+// Init
 // ------------------------------------------------------------
 void controls_init()
 {
@@ -86,67 +92,89 @@ void controls_update(bool ui_blocked)
     if (SDL_NumJoysticks() > 0 && SDL_IsGameController(0))
     {
         SDL_GameController* pad = SDL_GameControllerOpen(0);
-        if (pad)
+        if (!pad)
+            return;
+
+        // --------------------------------------------------------
+        // Left stick = movement
+        // --------------------------------------------------------
+        float lx = SDL_GameControllerGetAxis(
+            pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
+        float ly = SDL_GameControllerGetAxis(
+            pad, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
+
+        lx = apply_deadzone(lx);
+        ly = apply_deadzone(ly);
+
+        g_control.strafe -= -lx;
+        g_control.forward += -ly;
+
+        // --------------------------------------------------------
+        // Trigger (L2) = boost
+        // --------------------------------------------------------
+        float lt = SDL_GameControllerGetAxis(
+            pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.0f;
+
+        bool boosting = (lt > 0.5f);
+        g_control.boost = g_control.boost || boosting;
+
+        // --------------------------------------------------------
+        // Light rumble while moving (left stick)
+        // --------------------------------------------------------
+        bool moving =
+            std::fabs(lx) > 0.01f ||
+            std::fabs(ly) > 0.01f;
+
+        if (moving && !boosting && !g_move_rumble_active)
         {
-            // Left stick = movement
-            float lx = SDL_GameControllerGetAxis(
-                pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.0f;
-            float ly = SDL_GameControllerGetAxis(
-                pad, SDL_CONTROLLER_AXIS_LEFTY) / 32767.0f;
+            SDL_GameControllerRumble(
+                pad,
+                2500,   // very light low freq
+                1200,   // subtle texture
+                120
+            );
+            g_move_rumble_active = true;
+        }
+        else if (!moving && g_move_rumble_active && !boosting)
+        {
+            SDL_GameControllerRumble(pad, 0, 0, 0);
+            g_move_rumble_active = false;
+        }
 
-            lx = apply_deadzone(lx);
-            ly = apply_deadzone(ly);
+        // --------------------------------------------------------
+        // Right stick = camera
+        // --------------------------------------------------------
+        float rx = SDL_GameControllerGetAxis(
+            pad, SDL_CONTROLLER_AXIS_RIGHTX) / 32767.0f;
+        float ry = SDL_GameControllerGetAxis(
+            pad, SDL_CONTROLLER_AXIS_RIGHTY) / 32767.0f;
 
-            g_control.strafe -= -lx;
-            g_control.forward += -ly;
+        rx = apply_deadzone(rx);
+        ry = apply_deadzone(ry);
 
-            // Right stick = camera
-            float rx = SDL_GameControllerGetAxis(
-                pad, SDL_CONTROLLER_AXIS_RIGHTX) / 32767.0f;
-            float ry = SDL_GameControllerGetAxis(
-                pad, SDL_CONTROLLER_AXIS_RIGHTY) / 32767.0f;
+        g_control.look_dx += rx * GAMEPAD_LOOK_SENS;
+        g_control.look_dy += ry * GAMEPAD_LOOK_SENS;
 
-            rx = apply_deadzone(rx);
-            ry = apply_deadzone(ry);
+        // --------------------------------------------------------
+        // Rumble while boosting (override)
+        // --------------------------------------------------------
+        if (boosting)
+        {
+            SDL_GameControllerRumble(
+                pad,
+                12000,
+                8000,
+                100
+            );
 
-            g_control.look_dx += rx * GAMEPAD_LOOK_SENS;
-            g_control.look_dy += ry * GAMEPAD_LOOK_SENS;
-
-
-            float lt = SDL_GameControllerGetAxis(
-                pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.0f;
-
-            bool boosting = (lt > 0.5f);
-
-            g_control.boost = g_control.boost || boosting;
-
-            // ------------------------------------------------------------
-            // Rumble while boosting
-            // ------------------------------------------------------------
-            if (boosting)
-            {
-                // Medium-low constant rumble (engine vibration feel)
-                SDL_GameControllerRumble(
-                    pad,
-                    12000,   // low frequency (motor rumble)
-                    8000,    // high frequency (texture)
-                    100      // short duration, refreshed every frame
-                );
-
-                g_rumble_active = true;
-            }
-            else if (g_rumble_active)
-            {
-                // Stop rumble immediately when boost released
-                SDL_GameControllerRumble(pad, 0, 0, 0);
-                g_rumble_active = false;
-            }
+            g_rumble_active = true;
+            g_move_rumble_active = false;
         }
     }
 }
 
 // ------------------------------------------------------------
-// Mouse input (called from SDL_PollEvent)
+// Mouse input (unchanged)
 // ------------------------------------------------------------
 void controls_on_mouse_motion(float dx, float dy)
 {
@@ -160,7 +188,7 @@ void controls_on_mouse_wheel(float y)
 }
 
 // ------------------------------------------------------------
-// End of frame (clear deltas)
+// End of frame
 // ------------------------------------------------------------
 void controls_end_frame()
 {
