@@ -990,6 +990,37 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
         controls_update();
+        // ------------------------------------------------------------
+// Xbox controller right-stick camera look (CONTROLLER ONLY)
+// ------------------------------------------------------------
+        if (g_controller)
+        {
+            constexpr float STICK_LOOK_SPEED = 2.4f; // radians/sec
+            constexpr float PITCH_LIMIT = 1.25f;
+
+            float rx = SDL_GameControllerGetAxis(
+                g_controller, SDL_CONTROLLER_AXIS_RIGHTX) / 32767.0f;
+
+            float ry = SDL_GameControllerGetAxis(
+                g_controller, SDL_CONTROLLER_AXIS_RIGHTY) / 32767.0f;
+
+            // deadzone
+            if (std::fabs(rx) < 0.18f) rx = 0.0f;
+            if (std::fabs(ry) < 0.18f) ry = 0.0f;
+
+            // yaw (left/right)
+            camera_yaw -= rx * STICK_LOOK_SPEED * dt;
+
+            // pitch (up/down)
+            drone.pitch -= ry * STICK_LOOK_SPEED * dt;
+
+            // clamp pitch
+            drone.pitch = std::clamp(
+                drone.pitch,
+                -PITCH_LIMIT,
+                PITCH_LIMIT
+            );
+        }
 
 
         const ControlState& ctl = controls_get();
