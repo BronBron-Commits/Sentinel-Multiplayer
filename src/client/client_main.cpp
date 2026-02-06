@@ -25,6 +25,7 @@
 
 #include "vehicles/drone/drone_controller.hpp"
 #include "vehicles/warthog/warthog_controller.hpp"
+#include "vehicles/warthog/render_warthog.hpp"
 
 #include "render/render_terrain.hpp"
 #include "render/render_drone_shader.hpp"
@@ -1118,20 +1119,9 @@ combat_fx_render(drone.yaw);
             glPopMatrix();
         }
         else {
-            constexpr float WARTHOG_SCALE = 5.0f;
-
-            glPushMatrix();
-            glTranslatef(warthog.x, warthog.y, warthog.z);
-            glRotatef(warthog.yaw * 57.2958f, 0, 1, 0);
-            glScalef(
-                1.6f * WARTHOG_SCALE,
-                0.6f * WARTHOG_SCALE,
-                2.2f * WARTHOG_SCALE
-            );
-            draw_unit_cube();
-            glPopMatrix();
-
+            render_warthog(warthog);
         }
+
 
         glEnable(GL_COLOR_MATERIAL);
 
