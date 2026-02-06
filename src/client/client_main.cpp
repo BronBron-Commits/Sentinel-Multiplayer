@@ -357,7 +357,8 @@ static void draw_ufo()
     // ---------- GLOW RING ----------
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glDepthMask(GL_FALSE);
 
     glBegin(GL_TRIANGLE_STRIP);
@@ -571,6 +572,88 @@ static float lerp_angle(float a, float b, float t)
     return a + diff * t;
 }
 
+static void emit_drone_rotors(const DroneState& d)
+{
+    // rotor offsets in local drone space (X,Z)
+    constexpr float R = 0.75f;
+    constexpr float H = -0.05f;
+
+    const float offsets[4][2] = {
+        {  R,  R },
+        { -R,  R },
+        { -R, -R },
+        {  R, -R }
+    };
+
+    float cy = std::cos(d.yaw);
+    float sy = std::sin(d.yaw);
+
+    for (int i = 0; i < 4; ++i)
+    {
+        // rotate rotor offset by yaw
+        float lx = offsets[i][0];
+        float lz = offsets[i][1];
+
+        float wx = lx * cy - lz * sy;
+        float wz = lx * sy + lz * cy;
+
+        TrailParticle& p = trail[trail_head];
+        trail_head = (trail_head + 1) % MAX_TRAIL;
+
+        p.x = d.x + wx;
+        p.y = d.y + H;
+        p.z = d.z + wz;
+        p.life = 1.0f;
+    }
+}
+
+static void render_trail_particles(const Camera& cam)
+{
+    float rx, ry, rz;
+    float ux, uy, uz;
+    get_billboard_axes(cam, rx, ry, rz, ux, uy, uz);
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glDepthMask(GL_FALSE);
+
+    glBegin(GL_QUADS);
+
+    for (int i = 0; i < MAX_TRAIL; ++i)
+    {
+        if (trail[i].life <= 0.0f)
+            continue;
+
+        float s = 0.14f * trail[i].life;
+
+        float a = trail[i].life;
+
+        float t = trail[i].life;
+
+        float r = 0.55f + (1.0f - t) * 0.35f; // magenta comes in as it fades
+        float g = 0.65f - (1.0f - t) * 0.25f;
+        float b = 1.0f;
+
+        glColor4f(r, g, b, a * 0.65f);
+
+
+        float x = trail[i].x;
+        float y = trail[i].y;
+        float z = trail[i].z;
+
+        glVertex3f(x - rx * s - ux * s, y - ry * s - uy * s, z - rz * s - uz * s);
+        glVertex3f(x + rx * s - ux * s, y + ry * s - uy * s, z + rz * s - uz * s);
+        glVertex3f(x + rx * s + ux * s, y + ry * s + uy * s, z + rz * s + uz * s);
+        glVertex3f(x - rx * s + ux * s, y - ry * s + uy * s, z - rz * s + uz * s);
+    }
+
+    glEnd();
+
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+}
 
 // ------------------------------------------------------------
 int main()
@@ -841,6 +924,13 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
         npc_update(dt);
+        update_trail(dt);
+
+        if (active_vehicle == ActiveVehicle::Drone)
+        {
+            emit_drone_rotors(drone);
+        }
+
 
 
 
@@ -886,9 +976,6 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
 
-        // ---- Rotor trails (4x) ----
-        const float rotor_radius = 0.55f;
-        const float rotor_height = 0.05f;
 
 
 
@@ -1105,6 +1192,7 @@ glEnable(GL_LIGHTING);
 glEnable(GL_COLOR_MATERIAL);
 draw_terrain(cam.pos.x, cam.pos.z, now * 0.001f);
 combat_fx_render(drone.yaw);
+render_trail_particles(cam);
 
 
 
