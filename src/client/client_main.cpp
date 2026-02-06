@@ -785,11 +785,15 @@ glViewport(0, 0, g_fb_w, g_fb_h);
             }
 
             if (e.type == SDL_MOUSEMOTION) {
-                controls_on_mouse_motion(
-                    (float)e.motion.xrel,
-                    (float)e.motion.yrel
-                );
+                if (active_vehicle == ActiveVehicle::Drone) {
+                    controls_on_mouse_motion(
+                        (float)e.motion.xrel,
+                        (float)e.motion.yrel
+                    );
+                }
+                // Warthog: mouse does NOTHING to camera or yaw
             }
+
 
             if (e.type == SDL_MOUSEWHEEL) {
                 controls_on_mouse_wheel((float)e.wheel.y);
@@ -872,12 +876,23 @@ glViewport(0, 0, g_fb_w, g_fb_h);
         // Send local snapshot
         if (local_player_id != 0) {
             Snapshot out{};
-            out.player_id   = local_player_id;
-            out.x = drone.x;
-            out.y = drone.y;
-            out.z = drone.z;
-            out.yaw = drone.yaw;
+            out.player_id = local_player_id;
+
+            if (active_vehicle == ActiveVehicle::Drone) {
+                out.x = drone.x;
+                out.y = drone.y;
+                out.z = drone.z;
+                out.yaw = drone.yaw;
+            }
+            else {
+                out.x = warthog.x;
+                out.y = warthog.y;
+                out.z = warthog.z;
+                out.yaw = warthog.yaw;
+            }
+
             out.server_time = now * 0.001;
+
 
             net_send_raw_to(&out, sizeof(out), server);
         }
@@ -889,7 +904,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
             drone_update_camera(drone, cam, cam_distance);
         }
         else {
-            warthog_update_camera(warthog, cam, cam_distance);
+            warthog_update_camera(warthog, cam, cam_distance, dt);
         }
 
 
