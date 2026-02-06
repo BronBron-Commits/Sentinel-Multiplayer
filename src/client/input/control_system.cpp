@@ -5,6 +5,8 @@
 #include <cstring>
 #include <cmath>
 
+static bool g_rumble_active = false;
+
 constexpr float GAMEPAD_LOOK_SENS = 100.0f; // try 4–8 range
 
 static SDL_GameController* g_controller = nullptr;
@@ -111,12 +113,34 @@ void controls_update(bool ui_blocked)
             g_control.look_dy += ry * GAMEPAD_LOOK_SENS;
 
 
-            // left trigger = boost
             float lt = SDL_GameControllerGetAxis(
                 pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.0f;
 
-            if (lt > 0.5f)
-                g_control.boost = true;
+            bool boosting = (lt > 0.5f);
+
+            g_control.boost = g_control.boost || boosting;
+
+            // ------------------------------------------------------------
+            // Rumble while boosting
+            // ------------------------------------------------------------
+            if (boosting)
+            {
+                // Medium-low constant rumble (engine vibration feel)
+                SDL_GameControllerRumble(
+                    pad,
+                    12000,   // low frequency (motor rumble)
+                    8000,    // high frequency (texture)
+                    100      // short duration, refreshed every frame
+                );
+
+                g_rumble_active = true;
+            }
+            else if (g_rumble_active)
+            {
+                // Stop rumble immediately when boost released
+                SDL_GameControllerRumble(pad, 0, 0, 0);
+                g_rumble_active = false;
+            }
         }
     }
 }
