@@ -2,27 +2,22 @@
 #include "input/control_system.hpp"
 #include "render/camera.hpp"
 
+extern float warthog_cam_orbit;
+extern bool  warthog_orbit_active;
+
 struct WarthogState
 {
-    // World transform
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;
 
-    // Orientation
     float yaw = 0.0f;
-
-    // Forward speed (scalar)
     float speed = 0.0f;
+    float steer_angle = 0.0f;
 
-    // --- NEW: vehicle dynamics ---
-    float steer_angle = 0.0f; // steering wheel angle (radians)
-
-    // World-space velocity (used for drift / slip)
     float vx = 0.0f;
     float vz = 0.0f;
 };
-
 
 void warthog_init(WarthogState& w);
 void warthog_update(
@@ -36,5 +31,3 @@ void warthog_update_camera(
     float cam_distance,
     float dt
 );
-
-void render_warthog(const WarthogState& w);

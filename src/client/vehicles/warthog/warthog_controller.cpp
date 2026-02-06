@@ -1,10 +1,19 @@
 ﻿#include "warthog_controller.hpp"
+
 #include <cmath>
 #include <algorithm>
+
 #include "render/render_terrain.hpp"
 
 // ============================================================
-// Vehicle tuning (FWD arcade car)
+// Externs (defined in client_main.cpp)
+// ============================================================
+
+extern float warthog_cam_orbit;
+extern bool  warthog_orbit_active;
+
+// ============================================================
+// Vehicle tuning (FWD arcade)
 // ============================================================
 
 constexpr float MAX_SPEED = 14.0f;
@@ -16,10 +25,10 @@ constexpr float STEER_SPEED = 6.0f;
 
 constexpr float WHEEL_BASE = 3.2f;
 
-// Longitudinal / lateral behavior
-constexpr float BASE_GRIP = 9.0f;   // forward alignment
-constexpr float SIDE_GRIP_FRONT = 5.0f;   // steering tires (slippy)
-constexpr float SIDE_GRIP_REAR = 16.0f;  // stabilizing tires (strong)
+// Grip
+constexpr float BASE_GRIP = 9.0f;
+constexpr float SIDE_GRIP_FRONT = 5.0f;
+constexpr float SIDE_GRIP_REAR = 16.0f;
 
 // Camera
 constexpr float CAM_HEIGHT = 17.0f;
@@ -39,8 +48,8 @@ static float sample_ground(const WarthogState& w)
     constexpr float HALF_W = 0.9f;
     constexpr float HALF_L = 1.2f;
 
-    float fx = std::cos(w.yaw);
-    float fz = std::sin(w.yaw);
+    float fx = std::sin(w.yaw);
+    float fz = std::cos(w.yaw);
     float rx = -fz;
     float rz = fx;
 
@@ -69,7 +78,7 @@ void warthog_update(
 )
 {
     // --------------------------------------------------------
-    // 1. Steering (speed-reduced at high velocity)
+    // Steering (speed sensitive)
     // --------------------------------------------------------
     float speed_factor =
         1.0f - std::clamp(std::abs(w.speed) / MAX_SPEED, 0.0f, 0.7f);
@@ -81,7 +90,7 @@ void warthog_update(
         (target_steer - w.steer_angle) * STEER_SPEED * dt;
 
     // --------------------------------------------------------
-    // 2. Engine / brake
+    // Engine / brake
     // --------------------------------------------------------
     float desired_speed = ctl.forward * MAX_SPEED;
     float accel =
@@ -90,7 +99,7 @@ void warthog_update(
     w.speed += (desired_speed - w.speed) * accel * dt;
 
     // --------------------------------------------------------
-    // 3. Bicycle yaw (front-wheel steering)
+    // Bicycle yaw
     // --------------------------------------------------------
     if (std::abs(w.speed) > 0.1f)
     {
@@ -100,13 +109,13 @@ void warthog_update(
     }
 
     // --------------------------------------------------------
-    // 4. Forward direction
+    // Forward vector
     // --------------------------------------------------------
     float fx = std::sin(w.yaw);
     float fz = std::cos(w.yaw);
 
     // --------------------------------------------------------
-    // 5. Target velocity (engine pulls front wheels)
+    // Target velocity
     // --------------------------------------------------------
     float target_vx = fx * w.speed;
     float target_vz = fz * w.speed;
@@ -115,20 +124,20 @@ void warthog_update(
     w.vz += (target_vz - w.vz) * BASE_GRIP * dt;
 
     // --------------------------------------------------------
-    // 6. Lateral tire forces (FWD behavior)
+    // Lateral stabilization
     // --------------------------------------------------------
     float side_v = (-fz * w.vx + fx * w.vz);
 
-    // Rear tires stabilize strongly
+    // Rear tires (strong)
     w.vx -= (-fz) * side_v * SIDE_GRIP_REAR * dt;
     w.vz -= (fx)*side_v * SIDE_GRIP_REAR * dt;
 
-    // Front tires allow slip (steering feel)
+    // Front tires (looser)
     w.vx -= (-fz) * side_v * SIDE_GRIP_FRONT * dt * 0.5f;
     w.vz -= (fx)*side_v * SIDE_GRIP_FRONT * dt * 0.5f;
 
     // --------------------------------------------------------
-    // 7. Clamp energy
+    // Energy clamp
     // --------------------------------------------------------
     float vel_len = std::sqrt(w.vx * w.vx + w.vz * w.vz);
     float max_len = std::abs(w.speed);
@@ -141,20 +150,20 @@ void warthog_update(
     }
 
     // --------------------------------------------------------
-    // 8. Integrate position
+    // Integrate
     // --------------------------------------------------------
     w.x += w.vx * dt;
     w.z += w.vz * dt;
 
     // --------------------------------------------------------
-    // 9. Terrain following
+    // Terrain follow
     // --------------------------------------------------------
     float ground = sample_ground(w) + GROUND_OFFSET;
     w.y += (ground - w.y) * (1.0f - std::exp(-dt * 18.0f));
 }
 
 // ============================================================
-// Camera — locked chase cam
+// Camera — orbit-capable chase cam
 // ============================================================
 
 void warthog_update_camera(
@@ -164,8 +173,16 @@ void warthog_update_camera(
     float dt
 )
 {
-    float fx = std::sin(w.yaw);
-    float fz = std::cos(w.yaw);
+    // Smoothly recenter when orbit not active
+    if (!warthog_orbit_active)
+    {
+        warthog_cam_orbit *= std::exp(-dt * 6.0f);
+    }
+
+    float cam_yaw = w.yaw + warthog_cam_orbit;
+
+    float fx = std::sin(cam_yaw);
+    float fz = std::cos(cam_yaw);
 
     float desired_x = w.x - fx * cam_distance;
     float desired_y = w.y + CAM_HEIGHT;
@@ -177,7 +194,8 @@ void warthog_update_camera(
     cam.pos.y += (desired_y - cam.pos.y) * t;
     cam.pos.z += (desired_z - cam.pos.z) * t;
 
-    cam.target.x = w.x + fx * CAM_AHEAD;
+    // Look where vehicle is facing, not orbit direction
+    cam.target.x = w.x + std::sin(w.yaw) * CAM_AHEAD;
     cam.target.y = w.y + CAM_LOOK;
-    cam.target.z = w.z + fz * CAM_AHEAD;
+    cam.target.z = w.z + std::cos(w.yaw) * CAM_AHEAD;
 }

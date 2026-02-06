@@ -51,6 +51,12 @@
 
 #include "util/math_util.hpp"
 
+// ============================================================
+// Warthog camera orbit globals (DEFINED HERE)
+// ============================================================
+
+float warthog_cam_orbit = 0.0f;
+bool  warthog_orbit_active = false;
 
 enum class ActiveVehicle {
     Drone,
@@ -58,6 +64,7 @@ enum class ActiveVehicle {
 };
 
 static ActiveVehicle active_vehicle = ActiveVehicle::Drone;
+
 
 
 
@@ -749,6 +756,21 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                             name_buffer.pop_back();
                     }
 
+                    // --------------------------------------------------
+// Warthog camera orbit (middle mouse)
+// --------------------------------------------------
+                    if (e.type == SDL_MOUSEBUTTONDOWN &&
+                        e.button.button == SDL_BUTTON_MIDDLE &&
+                        active_vehicle == ActiveVehicle::Warthog)
+                    {
+                        warthog_orbit_active = true;
+                    }
+
+                    if (e.type == SDL_MOUSEBUTTONUP &&
+                        e.button.button == SDL_BUTTON_MIDDLE)
+                    {
+                        warthog_orbit_active = false;
+                    }
 
                     if (e.key.keysym.sym == SDLK_RETURN ||
                         e.key.keysym.sym == SDLK_KP_ENTER) {
@@ -787,15 +809,23 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                 }
             }
 
-            if (e.type == SDL_MOUSEMOTION) {
-                if (active_vehicle == ActiveVehicle::Drone) {
+            if (e.type == SDL_MOUSEMOTION)
+            {
+                if (active_vehicle == ActiveVehicle::Drone)
+                {
                     controls_on_mouse_motion(
                         (float)e.motion.xrel,
                         (float)e.motion.yrel
                     );
                 }
-                // Warthog: mouse does NOTHING to camera or yaw
+                else if (active_vehicle == ActiveVehicle::Warthog &&
+                    warthog_orbit_active)
+                {
+                    constexpr float ORBIT_SENS = 0.0045f;
+                    warthog_cam_orbit -= e.motion.xrel * ORBIT_SENS;
+                }
             }
+
 
 
             if (e.type == SDL_MOUSEWHEEL) {
