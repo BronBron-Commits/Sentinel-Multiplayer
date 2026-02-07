@@ -842,7 +842,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
     while (running) {
 
-
+        controls_update();   // ✅ reset FIRST
 
 
         // ===============================
@@ -956,20 +956,20 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
             if (e.type == SDL_MOUSEMOTION)
             {
-                if (active_vehicle == ActiveVehicle::Drone)
-                {
-                    controls_on_mouse_motion(
-                        (float)e.motion.xrel,
-                        (float)e.motion.yrel
-                    );
-                }
-                else if (active_vehicle == ActiveVehicle::Warthog &&
+                controls_on_mouse_motion(
+                    (float)e.motion.xrel,
+                    (float)e.motion.yrel
+                );
+
+                // Warthog orbit is ADDITIVE, not exclusive
+                if (active_vehicle == ActiveVehicle::Warthog &&
                     warthog_orbit_active)
                 {
                     constexpr float ORBIT_SENS = 0.0045f;
                     warthog_cam_orbit -= e.motion.xrel * ORBIT_SENS;
                 }
             }
+
 
 
 
@@ -1003,36 +1003,30 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         controls_update();
         // ------------------------------------------------------------
-// Xbox controller right-stick camera look (CONTROLLER ONLY)
-// ------------------------------------------------------------
+        // Xbox controller right-stick → unified look input
+        // ------------------------------------------------------------
         if (g_controller)
         {
-            constexpr float STICK_LOOK_SPEED = 2.4f; // radians/sec
-            constexpr float PITCH_LIMIT = 1.25f;
-
             float rx = SDL_GameControllerGetAxis(
                 g_controller, SDL_CONTROLLER_AXIS_RIGHTX) / 32767.0f;
 
             float ry = SDL_GameControllerGetAxis(
                 g_controller, SDL_CONTROLLER_AXIS_RIGHTY) / 32767.0f;
 
-            // deadzone
             if (std::fabs(rx) < 0.18f) rx = 0.0f;
             if (std::fabs(ry) < 0.18f) ry = 0.0f;
 
-            // yaw (left/right)
-            camera_yaw -= rx * STICK_LOOK_SPEED * dt;
+            constexpr float STICK_LOOK_SCALE = 18.0f;
 
-            // pitch (up/down)
-            drone.pitch -= ry * STICK_LOOK_SPEED * dt;
-
-            // clamp pitch
-            drone.pitch = std::clamp(
-                drone.pitch,
-                -PITCH_LIMIT,
-                PITCH_LIMIT
+            controls_on_mouse_motion(
+                rx * STICK_LOOK_SCALE,
+                -ry * STICK_LOOK_SCALE
             );
         }
+
+
+
+
 
 
         const ControlState& ctl = controls_get();

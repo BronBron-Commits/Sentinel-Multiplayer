@@ -57,45 +57,86 @@ static void draw_unit_cube()
 }
 
 // ------------------------------------------------------------
-// Walker renderer
+// Walker renderer (purely visual)
 // ------------------------------------------------------------
 void render_walker(const WalkerState& w)
 {
-    // Procedural walk animation
-    float leg_swing = std::sin(w.walk_phase) * 0.45f;
+    float leg_phase = std::sin(w.walk_phase);
+    float arm_phase = std::sin(w.walk_phase + 3.14159f);
 
     glPushMatrix();
 
+    // World transform (already grounded by controller)
     glTranslatef(w.x, w.y, w.z);
     glRotatef(w.yaw * 57.2958f, 0, 1, 0);
 
+    // Overall scale (human-sized but readable)
+    glScalef(5.0f, 5.0f, 5.0f);
+
     glEnable(GL_COLOR_MATERIAL);
-    glColor3f(0.7f, 0.7f, 0.7f);
+    glColor3f(0.75f, 0.75f, 0.78f);
 
-    // ---------------- BODY ----------------
+    // ============================================================
+    // LEGS (rooted at ground)
+    // ============================================================
+
+    // Left leg
     glPushMatrix();
-    glScalef(0.6f, 1.2f, 0.4f);
+    glTranslatef(-0.18f, 0.45f, 0.0f);
+    glRotatef(leg_phase * 30.0f, 1, 0, 0);
+    glTranslatef(0.0f, -0.45f, 0.0f);
+    glScalef(0.18f, 0.9f, 0.18f);
     draw_unit_cube();
     glPopMatrix();
 
-    // ---------------- LEFT LEG ----------------
+    // Right leg
     glPushMatrix();
-    glTranslatef(-0.2f, -0.9f, 0.0f);
-    glRotatef(leg_swing * 35.0f, 1, 0, 0);
-    glTranslatef(0.0f, -0.4f, 0.0f);
-    glScalef(0.18f, 0.8f, 0.18f);
+    glTranslatef(0.18f, 0.45f, 0.0f);
+    glRotatef(-leg_phase * 30.0f, 1, 0, 0);
+    glTranslatef(0.0f, -0.45f, 0.0f);
+    glScalef(0.18f, 0.9f, 0.18f);
     draw_unit_cube();
     glPopMatrix();
 
-    // ---------------- RIGHT LEG ----------------
+    // ============================================================
+    // TORSO (SHORTENED — FIXES YOUR MAIN COMPLAINT)
+    // ============================================================
     glPushMatrix();
-    glTranslatef(0.2f, -0.9f, 0.0f);
-    glRotatef(-leg_swing * 35.0f, 1, 0, 0);
-    glTranslatef(0.0f, -0.4f, 0.0f);
-    glScalef(0.18f, 0.8f, 0.18f);
+    glTranslatef(0.0f, 1.25f, 0.0f);
+    glScalef(0.55f, 0.65f, 0.35f);
+    draw_unit_cube();
+    glPopMatrix();
+
+    // ============================================================
+    // ARMS
+    // ============================================================
+
+    // Left arm
+    glPushMatrix();
+    glTranslatef(-0.48f, 1.35f, 0.0f);
+    glRotatef(arm_phase * 25.0f, 1, 0, 0);
+    glTranslatef(0.0f, -0.35f, 0.0f);
+    glScalef(0.14f, 0.7f, 0.14f);
+    draw_unit_cube();
+    glPopMatrix();
+
+    // Right arm
+    glPushMatrix();
+    glTranslatef(0.48f, 1.35f, 0.0f);
+    glRotatef(-arm_phase * 25.0f, 1, 0, 0);
+    glTranslatef(0.0f, -0.35f, 0.0f);
+    glScalef(0.14f, 0.7f, 0.14f);
+    draw_unit_cube();
+    glPopMatrix();
+
+    // ============================================================
+    // HEAD
+    // ============================================================
+    glPushMatrix();
+    glTranslatef(0.0f, 1.85f, 0.0f);
+    glScalef(0.32f, 0.32f, 0.32f);
     draw_unit_cube();
     glPopMatrix();
 
     glPopMatrix();
 }
-
