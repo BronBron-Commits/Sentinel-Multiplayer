@@ -371,7 +371,10 @@ static void render_world_for_xr(const XrView& view, int width, int height)
     // ---------- VEHICLE RENDERING (local) ----------
     const ControlState& ctl = controls_get();
 
-    if (active_vehicle == ActiveVehicle::Drone) {
+    // In VR we don't render the local player's avatar/vehicle
+    // (first-person HMD view will handle hands/controllers).
+    if (!xr_is_session_running()) {
+        if (active_vehicle == ActiveVehicle::Drone) {
         bool local_idle =
             std::fabs(ctl.forward) < 0.01f &&
             std::fabs(ctl.strafe) < 0.01f &&
@@ -406,12 +409,13 @@ static void render_world_for_xr(const XrView& view, int width, int height)
         glUseProgram(0);
         glEnable(GL_LIGHTING);
         glPopMatrix();
-    }
-    else if (active_vehicle == ActiveVehicle::Warthog) {
-        render_warthog(warthog);
-    }
-    else {
-        render_walker(walker);
+        }
+        else if (active_vehicle == ActiveVehicle::Warthog) {
+            render_warthog(warthog);
+        }
+        else {
+            render_walker(walker);
+        }
     }
 
     // ---------- VEHICLE RENDERING (remote players) ----------
