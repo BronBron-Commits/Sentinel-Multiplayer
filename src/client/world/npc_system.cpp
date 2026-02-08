@@ -1,4 +1,4 @@
-#include "client/world/npc_system.hpp"
+#include "npc_system.hpp"
 
 #include <cmath>
 #include <cstdlib>

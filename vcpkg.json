@@ -5,6 +5,7 @@
     "glad",
     "sdl2",
     "sdl2-ttf",
-    "sdl2-mixer"
+    "sdl2-mixer",
+    "openxr-loader"
   ]
 }

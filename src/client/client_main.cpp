@@ -52,6 +52,7 @@
 #include "sentinel/net/protocol/chat.hpp"
 
 #include "util/math_util.hpp"
+#include "vr/openxr_helper.hpp"
 
 static SDL_GameController* g_controller = nullptr;
 
@@ -99,6 +100,8 @@ static void fix_working_directory()
 // ------------------------------------------------------------
 struct Camera;
 
+static void render_trail_particles(const Camera& cam);
+static float lerp_angle(float a, float b, float t);
 
 static bool prev_space = false;
 
@@ -109,6 +112,11 @@ static bool prev_space = false;
 static DroneState drone{};
 static WarthogState warthog{};
 static WalkerState walker{};
+
+// Make replication client available to XR renderer
+static ReplicationClient replication;
+// Local player id used by renderer
+static uint32_t g_local_player_id = 0;
 
 static void get_billboard_axes(
     const Camera& cam,
@@ -280,6 +288,199 @@ static IdlePose compute_idle_pose(uint32_t player_id, double t) {
     p.yaw_offset = std::sin(t * 0.25 + phase) * 1.0f;
 
     return p;
+}
+
+// Rotate a vector `v` by quaternion `q` (q = {x,y,z,w})
+static void quat_rotate_vec(const XrQuaternionf& q, const XrVector3f& v, float& rx, float& ry, float& rz)
+{
+    // Quaternion-vector multiplication: v' = q * v * q^-1
+    float qx = q.x, qy = q.y, qz = q.z, qw = q.w;
+    // t = 2 * cross(q.xyz, v)
+    float tx = 2.0f * (qy * v.z - qz * v.y);
+    float ty = 2.0f * (qz * v.x - qx * v.z);
+    float tz = 2.0f * (qx * v.y - qy * v.x);
+    // v' = v + qw * t + cross(q.xyz, t)
+    float cx = qy * tz - qz * ty;
+    float cy = qz * tx - qx * tz;
+    float cz = qx * ty - qy * tx;
+    rx = v.x + qw * tx + cx;
+    ry = v.y + qw * ty + cy;
+    rz = v.z + qw * tz + cz;
+}
+
+// Render the world from an XR view into the current GL framebuffer.
+static void render_world_for_xr(const XrView& view, int width, int height)
+{
+    if (width <= 0 || height <= 0) return;
+
+    // Setup projection from XrFov
+    float nearZ = 0.1f;
+    float farZ = 500.0f;
+    float left = nearZ * std::tan(view.fov.angleLeft);
+    float right = nearZ * std::tan(view.fov.angleRight);
+    float top = nearZ * std::tan(view.fov.angleUp);
+    float bottom = nearZ * std::tan(view.fov.angleDown);
+
+    glViewport(0, 0, width, height);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glFrustum(left, right, bottom, top, nearZ, farZ);
+
+    // Modelview from pose
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    // Camera position and orientation from view.pose
+    XrVector3f pos = view.pose.position;
+    XrQuaternionf orient = view.pose.orientation;
+
+    // forward = rotate (0,0,-1)
+    float fx, fy, fz;
+    quat_rotate_vec(orient, {0.0f, 0.0f, -1.0f}, fx, fy, fz);
+
+    // up = rotate (0,1,0)
+    float ux, uy, uz;
+    quat_rotate_vec(orient, {0.0f, 1.0f, 0.0f}, ux, uy, uz);
+
+    // gluLookAt(eye, center, up)
+    gluLookAt(
+        pos.x, pos.y, pos.z,
+        pos.x + fx, pos.y + fy, pos.z + fz,
+        ux, uy, uz
+    );
+
+    // --- WORLD DRAW (reuse the same draw calls used in main loop) ---
+    // Build a lightweight Camera from the XR view for functions that need it
+    Camera camXR{};
+    camXR.pos.x = pos.x; camXR.pos.y = pos.y; camXR.pos.z = pos.z;
+    camXR.target.x = pos.x + fx; camXR.target.y = pos.y + fy; camXR.target.z = pos.z + fz;
+
+    // Sky
+    draw_sky((float)(SDL_GetTicks() * 0.001), camera_yaw, drone.pitch);
+
+    // Terrain and effects
+    glEnable(GL_LIGHTING);
+    glEnable(GL_COLOR_MATERIAL);
+    draw_terrain(camXR.pos.x, camXR.pos.z, (float)(SDL_GetTicks() * 0.001));
+    combat_fx_render(drone.yaw);
+    render_trail_particles(camXR);
+
+    // ---------- VEHICLE RENDERING (local) ----------
+    const ControlState& ctl = controls_get();
+
+    if (active_vehicle == ActiveVehicle::Drone) {
+        bool local_idle =
+            std::fabs(ctl.forward) < 0.01f &&
+            std::fabs(ctl.strafe) < 0.01f &&
+            !ctl.boost;
+
+        IdlePose idle{};
+        if (local_idle) {
+            idle = compute_idle_pose(g_local_player_id, SDL_GetTicks() * 0.001);
+        }
+
+        glPushMatrix();
+        glTranslatef(drone.x, drone.y + idle.y_offset, drone.z);
+
+        glRotatef((drone.yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
+        glRotatef(drone.pitch * 57.2958f + idle.pitch, 1, 0, 0);
+        glRotatef(drone.roll * 57.2958f + idle.roll, 0, 0, 1);
+
+        glDisable(GL_LIGHTING);
+        glUseProgram(g_drone_program);
+
+        glUniform3f(uBaseColor, 0.65f, 0.68f, 0.72f);
+        glUniform1f(uMetallic, 0.90f);
+        glUniform1f(uRoughness, 0.32f);
+
+        glUniform3f(uCameraPos, camXR.pos.x, camXR.pos.y, camXR.pos.z);
+        glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
+        glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
+
+        upload_fixed_matrices();
+        draw_drone_mesh();
+
+        glUseProgram(0);
+        glEnable(GL_LIGHTING);
+        glPopMatrix();
+    }
+    else if (active_vehicle == ActiveVehicle::Warthog) {
+        render_warthog(warthog);
+    }
+    else {
+        render_walker(walker);
+    }
+
+    // ---------- VEHICLE RENDERING (remote players) ----------
+    double render_time = SDL_GetTicks() * 0.001 - INTERP_DELAY;
+    for (uint32_t pid = 1; pid < 64; ++pid) {
+        if (pid == g_local_player_id) continue;
+
+        Snapshot a, b;
+        if (!replication.sample(pid, render_time, a, b)) continue;
+
+        float alpha = clamp01(float((render_time - a.server_time) / (b.server_time - a.server_time)));
+
+        IdlePose idle_pose{};
+        if (is_idle(a, b)) idle_pose = compute_idle_pose(pid, render_time);
+
+        float ryaw = lerp_angle(a.yaw, b.yaw, alpha);
+
+        glPushMatrix();
+        glTranslatef(lerp(a.x, b.x, alpha), lerp(a.y, b.y, alpha) + idle_pose.y_offset, lerp(a.z, b.z, alpha));
+
+        glRotatef((ryaw + idle_pose.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
+        glRotatef(idle_pose.pitch, 1, 0, 0);
+        glRotatef(idle_pose.roll, 0, 0, 1);
+
+        glDisable(GL_LIGHTING);
+        glUseProgram(g_drone_program);
+
+        glUniform3f(uCameraPos, camXR.pos.x, camXR.pos.y, camXR.pos.z);
+        glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
+        glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
+
+        glUniform3f(uBaseColor, 0.6f, 0.6f, 0.65f);
+        glUniform1f(uMetallic, 0.80f);
+        glUniform1f(uRoughness, 0.40f);
+
+        upload_fixed_matrices();
+        draw_drone_mesh();
+
+        glUseProgram(0);
+        glEnable(GL_LIGHTING);
+        glPopMatrix();
+    }
+
+    // ---------- XR Controller visualization / pose offsets ----------
+    XrPosef leftPose, rightPose;
+    if (xr_get_hand_poses(leftPose, rightPose)) {
+        // draw simple cubes at hand positions
+        glDisable(GL_LIGHTING);
+        glColor3f(0.9f, 0.2f, 0.2f);
+        glPushMatrix();
+        glTranslatef(leftPose.position.x, leftPose.position.y, leftPose.position.z);
+        glScalef(0.05f, 0.05f, 0.05f);
+        draw_unit_cube();
+        glPopMatrix();
+
+        glColor3f(0.2f, 0.9f, 0.2f);
+        glPushMatrix();
+        glTranslatef(rightPose.position.x, rightPose.position.y, rightPose.position.z);
+        glScalef(0.05f, 0.05f, 0.05f);
+        draw_unit_cube();
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+    }
+
+    // Restore matrices
+    glPopMatrix(); // MODELVIEW
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
 }
 
 
@@ -766,6 +967,13 @@ if (!gladLoadGL()) {
     return 1;
 }
 
+    // Attempt to create an OpenXR session bound to the current OpenGL context (WGL)
+    if (xr_create_session_for_current_opengl_context()) {
+        printf("[XR] session created\n");
+    } else {
+        printf("[XR] XR session not available\n");
+    }
+
 // --- CRITICAL: initialize framebuffer size + viewport immediately ---
 SDL_GL_GetDrawableSize(win, &g_fb_w, &g_fb_h);
 glViewport(0, 0, g_fb_w, g_fb_h);
@@ -821,9 +1029,6 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     hello.type = PacketType::HELLO;
     net_send_raw_to(&hello, sizeof(hello), server);
 
-    ReplicationClient replication;
-    uint32_t local_player_id = 0;
-
 
 
 
@@ -840,9 +1045,28 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     bool running = true;
     bool in_name_entry = true;
 
+    // Simple XR render callback: clear each eye to a distinct color.
+    auto xr_view_cb = [](int viewIndex, const XrView& view, int width, int height, unsigned int colorTex) {
+        // FBO is bound by helper and texture attached; just render into it.
+        glViewport(0, 0, width, height);
+        if (viewIndex == 0)
+            glClearColor(0.12f, 0.16f, 0.22f, 1.0f);
+        else
+            glClearColor(0.18f, 0.12f, 0.18f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // TODO: call the engine's renderer with view/proj matrices here.
+    };
+
     while (running) {
 
         controls_update();   // ✅ reset FIRST
+
+        // Poll XR events early; will update session state. If it returns false,
+        // the runtime signaled exit/loss.
+        if (!xr_poll_events()) {
+            running = false;
+            break;
+        }
 
 
         // ===============================
@@ -1083,9 +1307,9 @@ glViewport(0, 0, g_fb_w, g_fb_h);
                 memcpy(&s, packet, sizeof(s));
                 replication.ingest(s);
 
-                if (local_player_id == 0) {
-                    local_player_id = s.player_id;
-                    printf("[client] assigned id=%u\n", local_player_id);
+                if (g_local_player_id == 0) {
+                    g_local_player_id = s.player_id;
+                    printf("[client] assigned id=%u\n", g_local_player_id);
                 }
             }
             else if (n == sizeof(ChatMessage)) {
@@ -1102,9 +1326,9 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
         // Send local snapshot
-        if (local_player_id != 0) {
+        if (g_local_player_id != 0) {
             Snapshot out{};
-            out.player_id = local_player_id;
+            out.player_id = g_local_player_id;
 
             if (active_vehicle == ActiveVehicle::Drone) {
                 out.x = drone.x;
@@ -1322,7 +1546,7 @@ render_trail_particles(cam);
 
             IdlePose idle{};
             if (local_idle) {
-                idle = compute_idle_pose(local_player_id, now * 0.001);
+                idle = compute_idle_pose(g_local_player_id, now * 0.001);
             }
 
             glPushMatrix();
@@ -1372,7 +1596,7 @@ render_trail_particles(cam);
         double render_time = now * 0.001 - INTERP_DELAY;
 
         for (uint32_t pid = 1; pid < 64; ++pid) {
-            if (pid == local_player_id)
+            if (pid == g_local_player_id)
                 continue;
 
             Snapshot a, b;
@@ -1560,6 +1784,14 @@ render_trail_particles(cam);
 
         glPopAttrib();
 
+
+        // XR rendering: call into engine draw for each view
+        struct LocalBridge { static void call(int v, const XrView& view, int w, int h, unsigned int t) {
+            // render the world using the HMD view/projection
+            render_world_for_xr(view, w, h);
+        }};
+
+        if (xr_is_session_running()) xr_render_frame(&LocalBridge::call);
 
         SDL_GL_SwapWindow(win);
     }

@@ -44,6 +44,9 @@ find_package(SDL2 CONFIG REQUIRED)
 find_package(SDL2_ttf CONFIG REQUIRED)
 find_package(SDL2_mixer CONFIG REQUIRED)
 
+# OpenXR (vcpkg: openxr-loader)
+find_package(OpenXR CONFIG REQUIRED)
+
 # ============================================================
 # CLIENT EXECUTABLE
 # ============================================================
@@ -71,6 +74,7 @@ add_executable(client
     src/client/render/warthog_shader.cpp
     src/client/vehicles/walker/walker_controller.cpp
     src/client/vehicles/walker/render_walker.cpp
+    src/client/vr/openxr_helper.cpp
 )
 
 target_include_directories(client PRIVATE
@@ -87,6 +91,7 @@ target_link_libraries(client PRIVATE
 
     opengl32
     glu32
+    OpenXR::openxr_loader
 )
 
 if (WIN32)
@@ -113,6 +118,12 @@ if (WIN32)
     add_custom_command(TARGET client POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:SDL2_mixer::SDL2_mixer>
+            $<TARGET_FILE_DIR:client>
+    )
+
+    add_custom_command(TARGET client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:OpenXR::openxr_loader>
             $<TARGET_FILE_DIR:client>
     )
 endif()
