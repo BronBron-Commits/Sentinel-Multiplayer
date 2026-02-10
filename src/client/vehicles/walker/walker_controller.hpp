@@ -24,8 +24,11 @@ void walker_update(
     float dt
 );
 
+// Add default values if you want
 void walker_update_camera(
     const WalkerState& w,
     Camera& cam,
-    float cam_distance
+    float cam_height = 15.0f,
+    float cam_distance = 25.0f,
+    float cam_side_offset = 0.0f  // optional sideways offset
 );

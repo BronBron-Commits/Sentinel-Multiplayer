@@ -89,11 +89,16 @@ bool xr_initialize()
         createInfo.enabledExtensionNames = enabledExts.data();
     }
 
-    XrResult res = xrCreateInstance(&createInfo, &g_instance);
-    if (!XR_SUCCEEDED(res)) {
-        std::cerr << "xrCreateInstance failed: " << res << std::endl;
-        return false;
-    }
+XrResult res = xrCreateInstance(&createInfo, &g_instance);
+
+if (!XR_SUCCEEDED(res)) {
+    std::cerr << "[XR] No OpenXR runtime installed — desktop mode\n";
+    g_instance = XR_NULL_HANDLE;
+    return true; // desktop mode continues, NOT fatal
+}
+
+
+
 
     return true;
 }
@@ -121,18 +126,30 @@ static bool ensure_fbo()
 
 bool xr_create_session_for_current_opengl_context()
 {
-    if (g_instance == XR_NULL_HANDLE) {
-        if (!xr_initialize()) return false;
-    }
+// XR not available → desktop mode
+if (g_instance == XR_NULL_HANDLE) {
+    std::cerr << "[XR] OpenXR unavailable — desktop mode\n";
+    g_system = XR_NULL_SYSTEM_ID;
+    g_session = XR_NULL_HANDLE;
+    return true; // continue in desktop mode
+}
 
-    // Get system id
-    XrSystemGetInfo sysInfo{XR_TYPE_SYSTEM_GET_INFO};
-    sysInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
-    XrResult r = xrGetSystem(g_instance, &sysInfo, &g_system);
-    if (!XR_SUCCEEDED(r)) {
-        std::cerr << "xrGetSystem failed: " << r << std::endl;
-        return false;
-    }
+
+
+XrSystemGetInfo sysInfo{XR_TYPE_SYSTEM_GET_INFO};
+sysInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+XrResult r = xrGetSystem(g_instance, &sysInfo, &g_system);
+
+if (!XR_SUCCEEDED(r)) {
+    std::cerr << "[XR] No HMD detected — desktop mode\n";
+    g_system = XR_NULL_SYSTEM_ID;
+    return true; // continue without VR
+}
+
+if (!XR_SUCCEEDED(r)) {
+    std::cerr << "[XR] xrGetSystem failed: " << r << std::endl;
+    return false;
+}
 
     // Create session with WGL binding
     HDC hdc = wglGetCurrentDC();
@@ -172,11 +189,14 @@ bool xr_create_session_for_current_opengl_context()
     sci.next = &glBinding;
     sci.systemId = g_system;
 
-    r = xrCreateSession(g_instance, &sci, &g_session);
-    if (!XR_SUCCEEDED(r)) {
-        std::cerr << "xrCreateSession failed: " << r << std::endl;
-        return false;
-    }
+r = xrCreateSession(g_instance, &sci, &g_session);
+if (!XR_SUCCEEDED(r)) {
+    std::cerr << "[XR] Could not create VR session — desktop mode\n";
+    g_session = XR_NULL_HANDLE;
+    return true; // continue without VR
+}
+
+
 
     // Create reference space (local)
     XrReferenceSpaceCreateInfo rc{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
@@ -340,7 +360,11 @@ bool xr_poll_events()
 
 bool xr_get_hand_poses(XrPosef& leftPose, XrPosef& rightPose)
 {
-    if (!g_sessionRunning || g_session == XR_NULL_HANDLE) return false;
+if (!g_sessionRunning || g_session == XR_NULL_HANDLE) {
+    // XR inactive → desktop mode
+    return false;
+}
+
     leftPose = g_leftHandPose;
     rightPose = g_rightHandPose;
     return true;

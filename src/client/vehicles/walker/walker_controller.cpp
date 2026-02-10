@@ -92,21 +92,26 @@ void walker_update(
 void walker_update_camera(
     const WalkerState& w,
     Camera& cam,
-    float cam_distance
+    float cam_height,
+    float cam_distance,
+    float cam_side_offset  // match .hpp
 )
 {
+    // forward direction from walker yaw
     float cy = std::cos(w.yaw);
     float sy = std::sin(w.yaw);
 
+    // Camera target: aim at walker’s head
     cam.target = {
         w.x,
         w.y + 1.6f,
         w.z
     };
 
+    // Camera position: above and behind, optionally offset sideways
     cam.pos = {
-        w.x - cy * cam_distance,
-        w.y + CAM_UP,
-        w.z - sy * cam_distance
+        w.x - cy * cam_distance + (-sy) * cam_side_offset,
+        w.y + cam_height,
+        w.z - sy * cam_distance + cy * cam_side_offset
     };
 }

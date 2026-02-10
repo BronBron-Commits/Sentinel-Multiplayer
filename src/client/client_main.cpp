@@ -53,6 +53,54 @@
 
 #include "util/math_util.hpp"
 #include "vr/openxr_helper.hpp"
+#include "vehicles/walker/walker_controller.hpp"
+
+static WalkerState walker{};
+
+
+
+static int g_fb_w = 1280;
+static int g_fb_h = 720;
+
+struct OrthoCamera {
+    float x, y, z;        // camera position
+    float zoom;           // zoom level
+    float target_x, target_y, target_z;
+};
+
+static OrthoCamera walker_cam{};
+
+
+enum class RunMode {
+    Desktop,
+    VR
+};
+
+static RunMode g_run_mode = RunMode::Desktop;
+
+
+static void apply_walker_ortho_camera()
+{
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+
+    float half_w = walker_cam.zoom * 0.5f;
+    float half_h = walker_cam.zoom * 0.5f * (float)g_fb_h / (float)g_fb_w;
+
+    glOrtho(-half_w, half_w, -half_h, half_h, 0.1f, 100.0f);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    gluLookAt(
+        walker_cam.x, walker_cam.y, walker_cam.z,
+        walker_cam.target_x, walker_cam.target_y, walker_cam.target_z,
+        0.0f, 1.0f, 0.0f
+    );
+}
+
 
 static SDL_GameController* g_controller = nullptr;
 
@@ -111,7 +159,7 @@ static bool prev_space = false;
 // ------------------------------------------------------------
 static DroneState drone{};
 static WarthogState warthog{};
-static WalkerState walker{};
+
 
 // Make replication client available to XR renderer
 static ReplicationClient replication;
@@ -192,8 +240,6 @@ constexpr double INTERP_DELAY = 0.45; // seconds
 static TTF_Font* g_chat_font = nullptr;
 static TTF_Font* g_title_font = nullptr;
 
-static int g_fb_w = 1280;
-static int g_fb_h = 720;
 
 // ------------------------------------------------------------
 // Chat UI state
@@ -413,9 +459,19 @@ static void render_world_for_xr(const XrView& view, int width, int height)
         else if (active_vehicle == ActiveVehicle::Warthog) {
             render_warthog(warthog);
         }
-        else {
-            render_walker(walker);
-        }
+else if (active_vehicle == ActiveVehicle::Walker) {
+    // Apply orthographic camera
+    apply_walker_ortho_camera();
+
+    render_walker(walker);
+
+    // Restore matrices
+    glPopMatrix(); // MODELVIEW
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
     }
 
     // ---------- VEHICLE RENDERING (remote players) ----------
@@ -878,6 +934,23 @@ static void render_trail_particles(const Camera& cam)
 // ------------------------------------------------------------
 int main()
 {
+    fix_working_directory();   // ← FIRST LINE, keep this
+
+    // --- PROMPT FOR VR OR DESKTOP ---
+    printf("Select mode: (1) Desktop, (2) VR: ");
+    int choice = 0;
+    scanf("%d", &choice);
+
+    if (choice == 2) {
+        g_run_mode = RunMode::VR;
+        printf("[mode] VR mode selected\n");
+    } else {
+        g_run_mode = RunMode::Desktop;
+        printf("[mode] Desktop mode selected\n");
+    }
+
+    setbuf(stdout, nullptr);
+
 
 
     fix_working_directory();   // ← FIRST LINE, no exceptions
@@ -971,12 +1044,14 @@ if (!gladLoadGL()) {
     return 1;
 }
 
-    // Attempt to create an OpenXR session bound to the current OpenGL context (WGL)
+if (g_run_mode == RunMode::VR) {
     if (xr_create_session_for_current_opengl_context()) {
         printf("[XR] session created\n");
     } else {
         printf("[XR] XR session not available\n");
+        g_run_mode = RunMode::Desktop; // fallback
     }
+}
 
 // --- CRITICAL: initialize framebuffer size + viewport immediately ---
 SDL_GL_GetDrawableSize(win, &g_fb_w, &g_fb_h);
@@ -1065,12 +1140,12 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
         controls_update();   // ✅ reset FIRST
 
-        // Poll XR events early; will update session state. If it returns false,
-        // the runtime signaled exit/loss.
-        if (!xr_poll_events()) {
-            running = false;
-            break;
-        }
+if (g_run_mode == RunMode::VR) {
+    if (!xr_poll_events()) {
+        running = false;
+        break;
+    }
+}
 
 
         // ===============================
@@ -1370,7 +1445,8 @@ glViewport(0, 0, g_fb_w, g_fb_h);
             warthog_update_camera(warthog, cam, cam_distance, dt);
         }
         else {
-            walker_update_camera(walker, cam, cam_distance);
+            walker_update_camera(walker, cam, 100.0f, 50.0f, 0.785f); // example values
+
         }
 
 
