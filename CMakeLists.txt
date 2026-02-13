@@ -54,11 +54,12 @@ find_package(OpenXR CONFIG REQUIRED)
 add_executable(client
     src/client/client_main.cpp
     src/client/vfx/combat_fx.cpp
-
+    src/client/render/water_reflect_shader.cpp
     src/client/render/render_drone_mesh.cpp
     src/client/render/render_drone_shader.cpp
     src/client/render/render_sky.cpp
     src/client/render/render_terrain.cpp
+    src/client/render/shader_util.cpp
 
     src/client/input/control_system.cpp
     src/client/audio/audio_system.cpp

@@ -1,4 +1,5 @@
-﻿#include "render_stats.hpp"
+#include "render_stats.hpp"
+#include "water_reflect_shader.hpp"
 
 #ifdef _DEBUG
 #define VERBOSE_LOGGING 1
@@ -369,7 +370,7 @@ static float terrain_slope(float ny) {
 
 static float path_distance(float x, float z) {
     float path_x = std::sin(z * 0.05f) * 10.0f;
-    return std::fabs(x - path_x) * 0.5f; // ⬅️ DOUBLE PATH WIDTH
+    return std::fabs(x - path_x) * 0.5f; // ?? DOUBLE PATH WIDTH
 }
 
 
@@ -635,7 +636,7 @@ static void grass_color(
     b *= richness;
 
     // ===========================
-    // DARK BASE → BRIGHT TIP
+    // DARK BASE ? BRIGHT TIP
     // ===========================
     r *= lerp(0.55f, 1.15f, h_t);
     g *= lerp(0.55f, 1.25f, h_t);
@@ -1478,6 +1479,8 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
     void draw_terrain(float cam_x, float cam_z, float time) {
 
+    glUseProgram(g_water_reflect_program);
+    glUniform1f(uWaterTime, time);
         if (g_grass_tex == 0) {
             g_grass_tex = generate_grass_texture(256);
         }

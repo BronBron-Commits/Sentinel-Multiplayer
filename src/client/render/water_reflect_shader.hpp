@@ -1,14 +1,14 @@
 #pragma once
 
-// Returns OpenGL program ID for water reflection shader
-unsigned int get_water_reflect_program();
+#include <glad/glad.h>
+
+extern unsigned int g_water_reflect_program;
+extern GLint uWaterModel;
+extern GLint uWaterView;
+extern GLint uWaterProj;
+extern GLint uWaterCameraPos;
+extern GLint uWaterSkyColor;
+extern GLint uWaterReflectivity;
+extern GLint uWaterTime;
+
 void init_water_reflect_shader();
-
-extern int uWaterModel;
-extern int uWaterView;
-extern int uWaterProj;
-extern int uWaterCameraPos;
-
-extern int uWaterSkyColor;
-extern int uWaterReflectivity;
-extern int uWaterTime;
