@@ -1,6 +1,7 @@
 #pragma once
 
 #include <openxr/openxr.h>
+#include <string>
 
 #include <vector>
 
@@ -32,3 +33,5 @@ bool xr_initialize();
 void xr_shutdown();
 
 XrInstance xr_get_instance();
+
+std::string get_active_openxr_runtime();

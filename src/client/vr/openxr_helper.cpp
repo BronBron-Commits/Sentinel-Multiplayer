@@ -2,6 +2,7 @@
 #include <cstring>
 #include <vector>
 #include <iostream>
+#include <openxr/openxr.h>
 
 #include <windows.h>
 #include <glad/glad.h>
@@ -56,14 +57,37 @@ static XrSpace g_rightHandSpace = XR_NULL_HANDLE;
 static XrPosef g_leftHandPose{ {0,0,0,1}, {0,0,0} };
 static XrPosef g_rightHandPose{ {0,0,0,1}, {0,0,0} };
 
+std::string get_active_openxr_runtime() {
+    // On Windows, the active OpenXR runtime is stored in the registry
+    HKEY hKey;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Khronos\\OpenXR\\1", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        char buf[512];
+        DWORD bufSize = sizeof(buf);
+        DWORD type = 0;
+        if (RegQueryValueExA(hKey, "ActiveRuntime", nullptr, &type, (LPBYTE)buf, &bufSize) == ERROR_SUCCESS && type == REG_SZ) {
+            RegCloseKey(hKey);
+            return std::string(buf, bufSize - 1); // remove null terminator
+        }
+        RegCloseKey(hKey);
+    }
+    return "(unknown)";
+}
+
 bool xr_initialize()
 {
     if (g_instance != XR_NULL_HANDLE)
         return true;
 
+    std::string runtime = get_active_openxr_runtime();
+    std::cout << "[XR] Active OpenXR runtime: " << runtime << std::endl;
+
     // Query available extensions and enable XR_KHR_opengl_enable if present
     uint32_t extCount = 0;
-    xrEnumerateInstanceExtensionProperties(nullptr, 0, &extCount, nullptr);
+    XrResult extRes = xrEnumerateInstanceExtensionProperties(nullptr, 0, &extCount, nullptr);
+    if (!XR_SUCCEEDED(extRes)) {
+        std::cerr << "[XR] Failed to enumerate OpenXR extensions: error code " << extRes << std::endl;
+        return false;
+    }
     std::vector<XrExtensionProperties> exts(extCount, {XR_TYPE_EXTENSION_PROPERTIES});
     xrEnumerateInstanceExtensionProperties(nullptr, extCount, &extCount, exts.data());
 
@@ -89,16 +113,41 @@ bool xr_initialize()
         createInfo.enabledExtensionNames = enabledExts.data();
     }
 
-XrResult res = xrCreateInstance(&createInfo, &g_instance);
 
-if (!XR_SUCCEEDED(res)) {
-    std::cerr << "[XR] No OpenXR runtime installed — desktop mode\n";
-    g_instance = XR_NULL_HANDLE;
-    return true; // desktop mode continues, NOT fatal
-}
-
-
-
+    std::cerr << "[XR] DEBUG: error logging active\n";
+    XrResult res = xrCreateInstance(&createInfo, &g_instance);
+    if (!XR_SUCCEEDED(res)) {
+        std::cerr << "[XR] No OpenXR runtime installed or failed to create instance.\n";
+        std::cerr << "[XR] xrCreateInstance error code: " << res << std::endl;
+        std::cerr << "[XR] Active OpenXR runtime: " << runtime << std::endl;
+        // Print possible causes for common error codes
+        switch (res) {
+            case XR_ERROR_RUNTIME_FAILURE:
+                std::cerr << "[XR] XR_ERROR_RUNTIME_FAILURE: The runtime failed for an unknown reason.\n";
+                break;
+            case XR_ERROR_RUNTIME_UNAVAILABLE:
+                std::cerr << "[XR] XR_ERROR_RUNTIME_UNAVAILABLE: No runtime is installed or the runtime is not available.\n";
+                break;
+            case XR_ERROR_INITIALIZATION_FAILED:
+                std::cerr << "[XR] XR_ERROR_INITIALIZATION_FAILED: Initialization failed. This may be due to a missing or incompatible OpenXR loader DLL, or a problem with the runtime.\n";
+                std::cerr << "[XR] Make sure openxr_loader.dll is present in your PATH or next to your executable.\n";
+                break;
+            case XR_ERROR_API_LAYER_NOT_PRESENT:
+                std::cerr << "[XR] XR_ERROR_API_LAYER_NOT_PRESENT: An API layer is missing.\n";
+                break;
+            case XR_ERROR_EXTENSION_NOT_PRESENT:
+                std::cerr << "[XR] XR_ERROR_EXTENSION_NOT_PRESENT: A required extension is missing.\n";
+                break;
+            case XR_ERROR_GRAPHICS_DEVICE_INVALID:
+                std::cerr << "[XR] XR_ERROR_GRAPHICS_DEVICE_INVALID: The graphics device is invalid or not compatible.\n";
+                break;
+            default:
+                std::cerr << "[XR] See https://www.khronos.org/registry/OpenXR/specs/1.0/html/xrspec.html#_result_codes for details.\n";
+                break;
+        }
+        g_instance = XR_NULL_HANDLE;
+        return false;
+    }
 
     return true;
 }
@@ -126,30 +175,33 @@ static bool ensure_fbo()
 
 bool xr_create_session_for_current_opengl_context()
 {
-// XR not available → desktop mode
-if (g_instance == XR_NULL_HANDLE) {
-    std::cerr << "[XR] OpenXR unavailable — desktop mode\n";
-    g_system = XR_NULL_SYSTEM_ID;
-    g_session = XR_NULL_HANDLE;
-    return true; // continue in desktop mode
-}
+    if (g_instance == XR_NULL_HANDLE) {
+        std::cerr << "[XR] OpenXR unavailable — desktop mode (no instance)\n";
+        std::cerr << "[XR] Check that your OpenXR runtime is set correctly and your headset is connected.\n";
+        std::cerr << "[XR] See https://github.com/KhronosGroup/OpenXR-SDK-Source/wiki/Choosing-an-OpenXR-Runtime for help.\n";
+        g_system = XR_NULL_SYSTEM_ID;
+        g_session = XR_NULL_HANDLE;
+        return false;
+    }
 
+    std::string runtime = get_active_openxr_runtime();
+    std::cout << "[XR] Using OpenXR runtime: " << runtime << std::endl;
 
+    XrSystemGetInfo sysInfo{XR_TYPE_SYSTEM_GET_INFO};
+    sysInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+    XrResult r = xrGetSystem(g_instance, &sysInfo, &g_system);
 
-XrSystemGetInfo sysInfo{XR_TYPE_SYSTEM_GET_INFO};
-sysInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
-XrResult r = xrGetSystem(g_instance, &sysInfo, &g_system);
+    if (!XR_SUCCEEDED(r)) {
+        std::cerr << "[XR] No HMD detected or xrGetSystem failed (error code " << r << ")\n";
+        std::cerr << "[XR] Active OpenXR runtime: " << runtime << std::endl;
+        g_system = XR_NULL_SYSTEM_ID;
+        return false;
+    }
 
-if (!XR_SUCCEEDED(r)) {
-    std::cerr << "[XR] No HMD detected — desktop mode\n";
-    g_system = XR_NULL_SYSTEM_ID;
-    return true; // continue without VR
-}
-
-if (!XR_SUCCEEDED(r)) {
-    std::cerr << "[XR] xrGetSystem failed: " << r << std::endl;
-    return false;
-}
+    if (!XR_SUCCEEDED(r)) {
+        std::cerr << "[XR] xrGetSystem failed: " << r << std::endl;
+        return false;
+    }
 
     // Create session with WGL binding
     HDC hdc = wglGetCurrentDC();

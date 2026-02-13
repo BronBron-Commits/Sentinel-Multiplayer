@@ -1491,33 +1491,31 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
         int base_x = int(std::floor(cam_x / GRID_SCALE));
         int base_z = int(std::floor(cam_z / GRID_SCALE));
 
-        const int TERRAIN_RADIUS = GRID_SIZE * 2;
+        // Aggressive LOD: reduce radius
+        const int TERRAIN_RADIUS = GRID_SIZE; // was GRID_SIZE * 2
 
 
-            for (int z = base_z - TERRAIN_RADIUS; z < base_z + TERRAIN_RADIUS; ++z) {
 
-                // ---------- ROW LOD (DECLARE ONCE PER ROW) ----------
-                float wz_center = (z + 0.5f) * GRID_SCALE;
-                float dz_cam = wz_center - cam_z;
-                float row_dist = std::fabs(dz_cam);
+        for (int z = base_z - TERRAIN_RADIUS; z < base_z + TERRAIN_RADIUS; ++z) {
+            // ---------- ROW LOD (DECLARE ONCE PER ROW) ----------
+            float wz_center = (z + 0.5f) * GRID_SCALE;
+            float dz_cam = wz_center - cam_z;
+            float row_dist = std::fabs(dz_cam);
 
-                int step = 1;
-                if (row_dist > TERRAIN_NEAR_END) step = 2;
-                if (row_dist > TERRAIN_MID_END)  step = 4;
-                if (row_dist > TERRAIN_FAR_END)  continue;
+            int step = 1;
+            if (row_dist > TERRAIN_NEAR_END) step = 4; // was 2
+            if (row_dist > TERRAIN_MID_END)  step = 12; // was 4
+            if (row_dist > TERRAIN_FAR_END)  continue;
 
-                glBegin(GL_TRIANGLE_STRIP);
-
-                for (int x = base_x - TERRAIN_RADIUS;
-                    x <= base_x + TERRAIN_RADIUS;
-                    x += step) {
+            glBegin(GL_TRIANGLE_STRIP);
+            for (int x = base_x - TERRAIN_RADIUS; x <= base_x + TERRAIN_RADIUS; x += step) {
 
                     // ---------- COLUMN DISTANCE (DECLARE ONCE PER COLUMN) ----------
                     float wx_center = (x + 0.5f) * GRID_SCALE;
                     float dx_cam = wx_center - cam_x;
                     float dist_cam = std::sqrt(dx_cam * dx_cam + dz_cam * dz_cam);
 
-                    for (int dz = 0; dz <= 1; ++dz) {
+                for (int dz = 0; dz <= 1; ++dz) {
 
                         float jx, jz;
                         vertex_jitter(x, z + dz, jx, jz);
@@ -1526,14 +1524,13 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
                         float wz = (z + dz + jz) * GRID_SCALE;
 
                         float wy = height_at(wx, wz);
-
-                        // ---------- HEIGHT LOD ----------
+                        // More aggressive height LOD for far terrain
                         if (dist_cam > TERRAIN_MID_END) {
                             float coarse = height_at(
-                                std::floor(wx * 0.25f) * 4.0f,
-                                std::floor(wz * 0.25f) * 4.0f
+                                std::floor(wx * 0.1f) * 10.0f,
+                                std::floor(wz * 0.1f) * 10.0f
                             );
-                            wy = lerp(wy, coarse, 0.65f);
+                            wy = lerp(wy, coarse, 0.85f);
                         }
 
                         float dist = path_distance(wx, wz);
@@ -1546,7 +1543,7 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
                         // ---------- NORMAL LOD ----------
                         float nx = 0.0f, ny = 1.0f, nz = 0.0f;
-                        if (dist_cam < TERRAIN_MID_END) {
+                        if (dist_cam < TERRAIN_NEAR_END) {
                             terrain_normal(wx, wz, nx, ny, nz);
                         }
 
@@ -1573,21 +1570,20 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
                     }
                 }
 
-                glEnd();
-            }
+            glEnd();
+        }
 
         
 
-        // -------- TREE PASS --------
+        // -------- TREE PASS (Cull at distance) --------
+        draw_trees_near(cam_x, cam_z, time);
 
-
-            draw_trees_near(cam_x, cam_z, time);
-
-
-
-            // -------- GRASS PASS --------
+        // -------- GRASS PASS (Cull at distance) --------
+        if (TERRAIN_RADIUS < 180) // Only draw grass if radius is small (i.e., near)
             draw_grass(cam_x, cam_z, time);
-            // -------- BUTTERFLIES --------
+
+        // -------- BUTTERFLIES (Cull at distance) --------
+        if (TERRAIN_RADIUS < 180)
             draw_path_butterflies(cam_x, cam_z, time);
 
         glDisable(GL_FOG);

@@ -57,8 +57,6 @@
 
 static WalkerState walker{};
 
-
-
 static int g_fb_w = 1280;
 static int g_fb_h = 720;
 
@@ -70,14 +68,12 @@ struct OrthoCamera {
 
 static OrthoCamera walker_cam{};
 
-
 enum class RunMode {
     Desktop,
     VR
 };
 
 static RunMode g_run_mode = RunMode::Desktop;
-
 
 static void apply_walker_ortho_camera()
 {
@@ -100,7 +96,6 @@ static void apply_walker_ortho_camera()
         0.0f, 1.0f, 0.0f
     );
 }
-
 
 static SDL_GameController* g_controller = nullptr;
 
@@ -200,7 +195,6 @@ static void get_billboard_axes(
     uy = fz * rx - fx * rz;
     uz = fx * ry - fy * rx;
 }
-
 
 // ------------------------------------------------------------
 // Forward declarations (required by C++)
@@ -307,7 +301,6 @@ static void upload_fixed_matrices()
     glUniformMatrix4fv(uView, 1, GL_FALSE, view);
     glUniformMatrix4fv(uProj, 1, GL_FALSE, proj);
 }
-
 
 static bool is_idle(const Snapshot& a, const Snapshot& b) {
     constexpr float VEL_EPS = 0.05f;
@@ -584,8 +577,6 @@ static constexpr int MAX_TRAIL = 256;
 static TrailParticle trail[MAX_TRAIL];
 static int trail_head = 0;
 
-
-
 static void set_metal_material(float r, float g, float b) {
     GLfloat ambient[] = { r * 0.15f, g * 0.15f, b * 0.15f, 1.0f };
     GLfloat diffuse[] = { r, g, b, 1.0f };
@@ -596,7 +587,6 @@ static void set_metal_material(float r, float g, float b) {
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, specular);
     glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 96.0f);
 }
-
 
 static void update_trail(float dt) {
     for (int i = 0; i < MAX_TRAIL; ++i) {
@@ -1064,7 +1054,10 @@ if (g_run_mode == RunMode::VR) {
     if (xr_create_session_for_current_opengl_context()) {
         printf("[XR] session created\n");
     } else {
-        printf("[XR] XR session not available\n");
+        printf("[XR] XR session not available.\n");
+        printf("[XR] Please check your OpenXR runtime and headset connection.\n");
+        extern std::string get_active_openxr_runtime();
+        printf("[XR] Active OpenXR runtime: %s\n", get_active_openxr_runtime().c_str());
         g_run_mode = RunMode::Desktop; // fallback
     }
 }
@@ -1138,6 +1131,8 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     std::unordered_map<uint32_t, bool> has_remote;
 
     Uint32 last_ticks = SDL_GetTicks();
+    Uint32 fps_last_time = last_ticks;
+    int fps_frames = 0;
     bool running = true;
     bool in_name_entry = true;
 
@@ -1157,6 +1152,16 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     };
 
     while (running) {
+
+        // --- FPS monitoring ---
+        ++fps_frames;
+        Uint32 now_ticks = SDL_GetTicks();
+        if (now_ticks - fps_last_time >= 1000) {
+            float fps = fps_frames * 1000.0f / (now_ticks - fps_last_time);
+            printf("[perf] FPS: %.1f\n", fps);
+            fps_last_time = now_ticks;
+            fps_frames = 0;
+        }
 
         controls_update();   // ✅ reset FIRST
 
