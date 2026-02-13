@@ -38,7 +38,7 @@ static inline float tree_wind(float x, float z, float time);
 static float height_at(float x, float z);
 static inline float flower_wind(float x, float z, float time);
 
-static constexpr float WIND_STRENGTH = 0.18f;
+static constexpr float WIND_STRENGTH = 0.36f;
 static constexpr float WIND_FREQ = 0.9f;
 static constexpr float WIND_SCALE = 0.12f;
 
@@ -1208,8 +1208,9 @@ glColor3f(r, g, b);
 
 
         float tint = 0.85f + hb * 0.15f;
-
-        set_canopy_color(canopy_color, tint);
+        // Add slight per-cluster tint variation for subtle color difference
+        float subtle_tint = tint * (0.97f + hash(i * 101, (int)(x * 17 + z * 23)) * 0.06f); // 0.97 to 1.03
+        set_canopy_color(canopy_color, subtle_tint);
 
 
 
@@ -1459,11 +1460,11 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
         // -------- Lighting --------
         glEnable(GL_LIGHTING);
 
-        GLfloat global_ambient[] = { 0.14f, 0.14f, 0.14f, 1.0f };
+        GLfloat global_ambient[] = { 0.08f, 0.08f, 0.08f, 1.0f };
         glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
 
         GLfloat sun_dir[] = { 0.4f, 1.0f, 0.3f, 0.0f };
-        GLfloat sun_color[] = { 0.60f, 0.58f, 0.55f, 1.0f };
+        GLfloat sun_color[] = { 0.35f, 0.32f, 0.30f, 1.0f };
         glEnable(GL_LIGHT0);
         glLightfv(GL_LIGHT0, GL_POSITION, sun_dir);
         glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_color);
