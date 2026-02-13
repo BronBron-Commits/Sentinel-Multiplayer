@@ -601,7 +601,7 @@ static void set_metal_material(float r, float g, float b) {
 static void update_trail(float dt) {
     for (int i = 0; i < MAX_TRAIL; ++i) {
         if (trail[i].life > 0.0f) {
-            trail[i].life -= dt * 1.8f; // fade speed
+            trail[i].life -= dt * 0.7f; // even slower fade for longer trails
             if (trail[i].life < 0.0f)
                 trail[i].life = 0.0f;
         }
@@ -883,7 +883,7 @@ static void emit_drone_rotors(const DroneState& d)
         p.x = d.x + wx;
         p.y = d.y + H;
         p.z = d.z + wz;
-        p.life = 1.0f;
+        p.life = 2.5f; // Even longer trail lifetime
     }
 }
 
@@ -905,7 +905,7 @@ static void render_trail_particles(const Camera& cam)
         if (trail[i].life <= 0.0f)
             continue;
 
-        float s = 0.14f * trail[i].life;
+        float s = 0.08f * trail[i].life; // Smaller particles
 
         float a = trail[i].life;
 
@@ -914,7 +914,6 @@ static void render_trail_particles(const Camera& cam)
         float r = 0.55f + (1.0f - t) * 0.35f; // magenta comes in as it fades
         float g = 0.65f - (1.0f - t) * 0.25f;
         float b = 1.0f;
-
         glColor4f(r, g, b, a * 0.65f);
 
 
