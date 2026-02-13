@@ -118,7 +118,11 @@ static float axis_norm(Sint16 v)
 // ============================================================
 
 float warthog_cam_orbit = 0.0f;
+
 bool  warthog_orbit_active = false;
+
+// Global camera pitch for sky orientation
+static float camera_pitch = 0.0f;
 
 enum class ActiveVehicle {
     Drone,
@@ -1456,14 +1460,15 @@ if (g_run_mode == RunMode::VR) {
 
         if (active_vehicle == ActiveVehicle::Drone) {
             drone_update_camera(drone, cam, cam_distance);
+            camera_pitch = drone.pitch;
         }
         else if (active_vehicle == ActiveVehicle::Warthog) {
             warthog_update_camera(warthog, cam, cam_distance, dt);
+            camera_pitch = 0.0f; // Warthog does not tilt sky
         }
         else {
-            // Match walker camera to warthog's camera style
-            // Use cam_distance for distance, and tune cam_height/side_offset for similar feel
             walker_update_camera(walker, cam, 4.5f, cam_distance, 0.0f);
+            camera_pitch = 0.0f;
         }
 
 
@@ -1599,7 +1604,7 @@ if (g_run_mode == RunMode::VR) {
         draw_sky(
             now * 0.001f,
             camera_yaw,
-            drone.pitch
+            camera_pitch
         );
 
 

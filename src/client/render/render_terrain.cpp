@@ -880,18 +880,22 @@ static void draw_path_butterflies(
             glBegin(GL_QUADS);
 
             float flap = std::sin(phase * 12.0f) * size * 0.9f;
+            float angle = hash(seed, b * 101) * 3.14159f; // random rotation for 3D cross
+            float s = std::sin(angle);
+            float c = std::cos(angle);
+            float y_offset = size * 0.15f; // slight vertical offset for 3D effect
 
-            // X-facing
-            glVertex3f(bx - size - flap, by, bz);
-            glVertex3f(bx + size + flap, by, bz);
-            glVertex3f(bx + size + flap, by + size * 0.6f, bz);
-            glVertex3f(bx - size - flap, by + size * 0.6f, bz);
+            // First quad (rotated in XZ plane)
+            glVertex3f(bx - c * (size + flap), by, bz - s * (size + flap));
+            glVertex3f(bx + c * (size + flap), by, bz + s * (size + flap));
+            glVertex3f(bx + c * (size + flap), by + size * 0.6f, bz + s * (size + flap));
+            glVertex3f(bx - c * (size + flap), by + size * 0.6f, bz - s * (size + flap));
 
-            // Z-facing (cross)
-            glVertex3f(bx, by, bz - size);
-            glVertex3f(bx, by, bz + size);
-            glVertex3f(bx, by + size * 0.6f, bz + size);
-            glVertex3f(bx, by + size * 0.6f, bz - size);
+            // Second quad (rotated 90 degrees in XZ plane)
+            glVertex3f(bx - s * size, by + y_offset, bz + c * size);
+            glVertex3f(bx + s * size, by + y_offset, bz - c * size);
+            glVertex3f(bx + s * size, by + size * 0.6f + y_offset, bz - c * size);
+            glVertex3f(bx - s * size, by + size * 0.6f + y_offset, bz + c * size);
 
             glEnd();
         }
@@ -958,7 +962,9 @@ static void draw_tree(
     // Trunk
     // ------------------------------
     const float trunk_h = 40.5f * height_variation;
-    const float trunk_r = 0.32f * height_variation;
+    // Add stable per-tree trunk thickness variation
+    float trunk_thickness = lerp(0.75f, 1.25f, hash((int)(x * 23), (int)(z * 37)));
+    const float trunk_r = 0.32f * height_variation * trunk_thickness;
     float trunk_sway = wind * trunk_h * 0.006f;
 
 
@@ -1200,14 +1206,23 @@ static void draw_tree(
 
 
 
+        // --- Normal variation per cluster ---
+        float n_theta = hash((int)(x * 47) + i * 13, (int)(z * 61) + i * 17) * 6.28318f;
+        float n_phi = hash((int)(x * 71) + i * 19, (int)(z * 37) + i * 23) * 1.1f - 0.55f; // -0.55 to 0.55 rad
+        float nx = std::cos(n_theta) * std::cos(n_phi);
+        float ny = std::sin(n_phi);
+        float nz = std::sin(n_theta) * std::cos(n_phi);
+
         glBegin(GL_QUADS);
 
+        glNormal3f(nx, ny, nz);
         // Quad X
         glVertex3f(cx - size, cy - size * 0.5f, cz);
         glVertex3f(cx + size, cy - size * 0.5f, cz);
         glVertex3f(cx + size, cy + size * 0.5f, cz);
         glVertex3f(cx - size, cy + size * 0.5f, cz);
 
+        glNormal3f(nx, ny, nz);
         // Quad Z (cross)
         glVertex3f(cx, cy - size * 0.5f, cz - size);
         glVertex3f(cx, cy - size * 0.5f, cz + size);
