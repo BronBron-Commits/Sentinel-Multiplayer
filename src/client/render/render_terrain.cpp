@@ -261,16 +261,26 @@ static void butterfly_color(int seed) {
 enum class GrassColor {
     Green,
     YellowGreen,
-    YellowBrown
+    YellowBrown,
+    Olive,
+    BlueGreen,
+    Dry
 };
 
-static inline GrassColor pick_grass_color(float x, float z) {
-    // LOW frequency = patchy fields, not noise speckle
-    float t = noise(x * 0.015f, z * 0.015f);
 
-    if (t < 0.45f)      return GrassColor::Green;
-    else if (t < 0.75f) return GrassColor::YellowGreen;
-    else                return GrassColor::YellowBrown;
+static inline GrassColor pick_grass_color(float x, float z) {
+    // Use multiple noise layers for more variation
+    float t = noise(x * 0.015f, z * 0.015f);
+    float t2 = noise(x * 0.045f + 100.0f, z * 0.045f - 50.0f);
+    float t3 = noise(x * 0.09f - 200.0f, z * 0.09f + 80.0f);
+    float v = 0.6f * t + 0.3f * t2 + 0.1f * t3;
+
+    if (v < 0.25f)      return GrassColor::Green;
+    else if (v < 0.40f) return GrassColor::BlueGreen;
+    else if (v < 0.55f) return GrassColor::YellowGreen;
+    else if (v < 0.70f) return GrassColor::Olive;
+    else if (v < 0.85f) return GrassColor::YellowBrown;
+    else                return GrassColor::Dry;
 }
 
 
@@ -575,17 +585,30 @@ static void grass_color(
         g = 0.62f;
         b = 0.28f;
         break;
-
+    case GrassColor::BlueGreen:
+        r = 0.18f;
+        g = 0.55f;
+        b = 0.38f;
+        break;
     case GrassColor::YellowGreen:
         r = 0.48f;
         g = 0.64f;
         b = 0.26f;
         break;
-
+    case GrassColor::Olive:
+        r = 0.44f;
+        g = 0.54f;
+        b = 0.18f;
+        break;
     case GrassColor::YellowBrown:
         r = 0.55f;
         g = 0.50f;
         b = 0.22f;
+        break;
+    case GrassColor::Dry:
+        r = 0.68f;
+        g = 0.60f;
+        b = 0.32f;
         break;
     }
 
