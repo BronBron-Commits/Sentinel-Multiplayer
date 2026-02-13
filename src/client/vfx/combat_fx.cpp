@@ -1,3 +1,4 @@
+#include "render/render_stats.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -44,7 +45,7 @@ static void draw_missile()
     glDisable(GL_LIGHTING);
     glColor3f(1.0f, 0.7f, 0.2f);
 
-    glBegin(GL_LINES);
+    GL_BEGIN_WRAPPED(GL_LINES);
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(-0.8f, 0.0f, 0.0f);
     glEnd();
@@ -68,7 +69,7 @@ static void draw_explosion_sphere(float radius, float alpha)
         float phi0 = (t0 - 0.5f) * 3.14159f;
         float phi1 = (t1 - 0.5f) * 3.14159f;
 
-        glBegin(GL_TRIANGLE_STRIP);
+        GL_BEGIN_WRAPPED(GL_TRIANGLE_STRIP);
         for (int j = 0; j <= LON; ++j) {
             float u = float(j) / LON;
             float theta = u * 6.28318f;

@@ -1,4 +1,8 @@
-﻿#define SDL_MAIN_HANDLED
+﻿#include "render/render_stats.hpp"
+#include "render/render_stats.hpp"
+#include <atomic>
+std::atomic<int> g_draw_call_count{0};
+#define SDL_MAIN_HANDLED
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <filesystem>
@@ -67,6 +71,12 @@ struct OrthoCamera {
 };
 
 static OrthoCamera walker_cam{};
+
+// Raise the camera by about 1 meter
+struct CameraInitRaiser {
+    CameraInitRaiser() { walker_cam.y += 1.0f; }
+};
+static CameraInitRaiser _raise_cam_init;
 
 enum class RunMode {
     Desktop,
@@ -611,7 +621,7 @@ static void draw_ufo()
     glPushMatrix();
     glScalef(3.5f, 0.6f, 3.5f);
 
-    glBegin(GL_TRIANGLE_FAN);
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_FAN);
     glNormal3f(0, 1, 0);
     glColor3f(0.65f, 0.7f, 0.75f);
     glVertex3f(0, 0, 0);
@@ -631,7 +641,7 @@ static void draw_ufo()
 
     glDepthMask(GL_FALSE);
 
-    glBegin(GL_TRIANGLE_STRIP);
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_STRIP);
     for (int i = 0; i <= 64; ++i) {
         float a = i / 64.0f * 6.28318f;
         float ca = std::cos(a);
@@ -670,7 +680,7 @@ static void draw_ufo()
         float phi0 = t0 * 1.5708f; // 0..pi/2
         float phi1 = t1 * 1.5708f;
 
-        glBegin(GL_TRIANGLE_STRIP);
+        GL_BEGIN_WRAPPED(GL_TRIANGLE_STRIP);
         for (int j = 0; j <= LON; ++j) {
             float theta = float(j) / LON * 6.28318f;
 
@@ -754,7 +764,7 @@ static void draw_rounded_rect(
 ) {
     const int SEG = 8;
 
-    glBegin(GL_TRIANGLE_FAN);
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_FAN);
     glVertex2f(x + r, y + r);
 
     for (int i = 0; i <= SEG; ++i) {
@@ -763,7 +773,7 @@ static void draw_rounded_rect(
     }
     glEnd();
 
-    glBegin(GL_TRIANGLE_FAN);
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_FAN);
     glVertex2f(x + w - r, y + r);
     for (int i = 0; i <= SEG; ++i) {
         float a = (float)i / SEG * 1.5708f;
@@ -771,7 +781,7 @@ static void draw_rounded_rect(
     }
     glEnd();
 
-    glBegin(GL_QUADS);
+    GL_BEGIN_WRAPPED(GL_QUADS);
     glVertex2f(x + r, y);
     glVertex2f(x + w - r, y);
     glVertex2f(x + w - r, y + h);
@@ -789,7 +799,7 @@ static float frand(float a, float b) {
 
 static void draw_unit_cube()
 {
-    glBegin(GL_QUADS);
+    GL_BEGIN_WRAPPED(GL_QUADS);
 
     // +X
     glNormal3f(1, 0, 0);
@@ -888,7 +898,7 @@ static void render_trail_particles(const Camera& cam)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     glDepthMask(GL_FALSE);
 
-    glBegin(GL_QUADS);
+    GL_BEGIN_WRAPPED(GL_QUADS);
 
     for (int i = 0; i < MAX_TRAIL; ++i)
     {
@@ -1084,7 +1094,8 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     controls_init();
     warthog_shader_init();
 
-    SDL_GL_SetSwapInterval(1);
+    // Disable vsync to unthrottle graphics (set to 0 for max FPS)
+    SDL_GL_SetSwapInterval(0);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_NORMALIZE);
@@ -1153,12 +1164,17 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
     while (running) {
 
+    g_draw_call_count = 0;
+
         // --- FPS monitoring ---
         ++fps_frames;
         Uint32 now_ticks = SDL_GetTicks();
         if (now_ticks - fps_last_time >= 1000) {
+            #ifdef _DEBUG
             float fps = fps_frames * 1000.0f / (now_ticks - fps_last_time);
-            printf("[perf] FPS: %.1f\n", fps);
+            int draw_calls = g_draw_call_count.load();
+            printf("[perf] FPS: %.1f | Draw Calls: %d\n", fps, draw_calls);
+            #endif
             fps_last_time = now_ticks;
             fps_frames = 0;
         }
@@ -1509,7 +1525,7 @@ if (g_run_mode == RunMode::VR) {
 
             // Background dim
             glColor4f(0, 0, 0, 0.75f);
-            glBegin(GL_QUADS);
+            GL_BEGIN_WRAPPED(GL_QUADS);
             glVertex2f(0, 0);
             glVertex2f(g_fb_w, 0);
             glVertex2f(g_fb_w, g_fb_h);
@@ -1532,7 +1548,7 @@ if (g_run_mode == RunMode::VR) {
                 glBindTexture(GL_TEXTURE_2D, prompt_tex);
                 glColor4f(1, 1, 1, 1);
 
-                glBegin(GL_QUADS);
+                GL_BEGIN_WRAPPED(GL_QUADS);
                 glTexCoord2f(0, 0); glVertex2f(x, y);
                 glTexCoord2f(1, 0); glVertex2f(x + tw, y);
                 glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
@@ -1559,7 +1575,7 @@ if (g_run_mode == RunMode::VR) {
                 glBindTexture(GL_TEXTURE_2D, name_tex);
                 glColor4f(0.9f, 0.95f, 1.0f, 1);
 
-                glBegin(GL_QUADS);
+                GL_BEGIN_WRAPPED(GL_QUADS);
                 glTexCoord2f(0, 0); glVertex2f(x, y);
                 glTexCoord2f(1, 0); glVertex2f(x + tw, y);
                 glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
@@ -1812,7 +1828,7 @@ if (g_run_mode == RunMode::VR) {
         // ---- Chat background ----
         int box_h = 32;
         glColor4f(0.0f, 0.0f, 0.0f, 0.6f);
-        glBegin(GL_QUADS);
+        GL_BEGIN_WRAPPED(GL_QUADS);
         glVertex2f(0, g_fb_h - box_h);
         glVertex2f(g_fb_w, g_fb_h - box_h);
         glVertex2f(g_fb_w, g_fb_h);
@@ -1842,7 +1858,7 @@ if (g_run_mode == RunMode::VR) {
                 float x = 10.0f;
                 float y = g_fb_h - 24.0f;
 
-                glBegin(GL_QUADS);
+                GL_BEGIN_WRAPPED(GL_QUADS);
                 glTexCoord2f(0, 0); glVertex2f(x, y);
                 glTexCoord2f(1, 0); glVertex2f(x + tw, y);
                 glTexCoord2f(1, 1); glVertex2f(x + tw, y + th);
@@ -1878,7 +1894,7 @@ if (g_run_mode == RunMode::VR) {
             glBindTexture(GL_TEXTURE_2D, tex);
             glColor4f(0.9f, 0.95f, 1.0f, 0.85f);
 
-            glBegin(GL_QUADS);
+            GL_BEGIN_WRAPPED(GL_QUADS);
             glTexCoord2f(0, 0); glVertex2f(10, yy);
             glTexCoord2f(1, 0); glVertex2f(10 + tw, yy);
             glTexCoord2f(1, 1); glVertex2f(10 + tw, yy + th);

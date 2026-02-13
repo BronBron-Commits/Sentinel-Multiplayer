@@ -1,4 +1,17 @@
-﻿#define WIN32_LEAN_AND_MEAN
+﻿#include "render_stats.hpp"
+
+#ifdef _DEBUG
+#define VERBOSE_LOGGING 1
+#else
+#define VERBOSE_LOGGING 0
+#endif
+#if VERBOSE_LOGGING
+#include <cstdio>
+#define LOG_DRAW(...) std::printf(__VA_ARGS__)
+#else
+#define LOG_DRAW(...)
+#endif
+#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
@@ -18,6 +31,7 @@ static GLuint g_grass_tex = 0;
 
 static float grass_field(float x, float z) {
 
+    LOG_DRAW("[perf] grass_field called at (%.2f, %.2f)\n", x, z);
     // Large patches
     float macro = noise(x * 0.010f, z * 0.010f);
 
@@ -736,7 +750,7 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 (dist < GRASS_LOD1_END) ? 8 : 4;
 
             int strands = int(base * density);
-            glBegin(GL_QUADS);
+            GL_BEGIN_WRAPPED(GL_QUADS);
 
 
             for (int i = 0; i < strands; ++i) {
@@ -794,7 +808,7 @@ static void draw_grass(float cam_x, float cam_z, float time)
                 glTexCoord2f(1, 1); glVertex3f(px + bend, wy + h, pz + GRASS_WIDTH);
                 glTexCoord2f(0, 1); glVertex3f(px + bend, wy + h, pz - GRASS_WIDTH);
             }
-            glEnd();  
+            glEnd();
         }
     }
 
@@ -815,13 +829,23 @@ static void draw_path_butterflies(
     glEnable(GL_ALPHA_TEST);
     glAlphaFunc(GL_GREATER, 0.15f);
 
+    constexpr int MAX_BUTTERFLY_SWARMS_ON_SCREEN = 10; // Limit swarms for performance
+    int swarms_drawn = 0;
+    LOG_DRAW("[perf] draw_path_butterflies: cam_x=%.2f cam_z=%.2f time=%.2f\n", cam_x, cam_z, time);
+    int total_butterflies = 0;
     for (int i = base_z - swarm_radius; i <= base_z + swarm_radius; ++i) {
         // --- Randomly decide if this segment has butterflies ---
         float spawn = hash(i * 41, 73);
 
+
         // ~45% of path segments have NO butterflies
         if (spawn < 0.45f)
             continue;
+
+        // Limit total swarms on screen
+        if (swarms_drawn >= MAX_BUTTERFLY_SWARMS_ON_SCREEN)
+            break;
+        ++swarms_drawn;
 
         float zc = i * BUTTERFLY_SWARM_SPACING;
         float path_jitter = (hash(i * 17, 91) - 0.5f) * 4.0f;
@@ -843,6 +867,7 @@ static void draw_path_butterflies(
             1;   // lone butterfly
 
         for (int b = 0; b < count; ++b) {
+            ++total_butterflies;
 
 
             float phase =
@@ -877,7 +902,8 @@ static void draw_path_butterflies(
 
             butterfly_color(seed + b * 53);
 
-            glBegin(GL_QUADS);
+            LOG_DRAW("[perf] butterfly draw glBegin(GL_QUADS)\n");
+            GL_BEGIN_WRAPPED(GL_QUADS);
 
             float flap = std::sin(phase * 12.0f) * size * 0.9f;
             float angle = hash(seed, b * 101) * 3.14159f; // random rotation for 3D cross
@@ -898,9 +924,11 @@ static void draw_path_butterflies(
             glVertex3f(bx - s * size, by + size * 0.6f + y_offset, bz + c * size);
 
             glEnd();
+            LOG_DRAW("[perf] butterfly draw glEnd()\n");
         }
     }
 
+    LOG_DRAW("[perf] draw_path_butterflies: total butterflies drawn: %d\n", total_butterflies);
     glDisable(GL_ALPHA_TEST);
     glEnable(GL_LIGHTING);
 }
@@ -1114,7 +1142,7 @@ float b = lerp(b1, b2, hueMix) * tint;
 
 glColor3f(r, g, b);
 
-                glBegin(GL_QUADS);
+                GL_BEGIN_WRAPPED(GL_QUADS);
 
                 // X-facing
                 glVertex3f(lx - flower_size + blossom_sway, ly - flower_size * 0.5f, lz);
@@ -1136,7 +1164,7 @@ glColor3f(r, g, b);
         }
 
 
-        glBegin(GL_QUADS);
+        GL_BEGIN_WRAPPED(GL_QUADS);
 
         glVertex3f(x - dz * branch_r, bh, z + dx * branch_r);
         glVertex3f(x + dz * branch_r, bh, z - dx * branch_r);
@@ -1353,7 +1381,7 @@ static void draw_tree_far_billboard(float x, float z, float fade) {
         break;
     }
 
-    glBegin(GL_QUADS);
+    GL_BEGIN_WRAPPED(GL_QUADS);
 
     // X-facing
     glVertex3f(x - 1.4f, y, z);
@@ -1507,7 +1535,7 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
             if (row_dist > TERRAIN_MID_END)  step = 12; // was 4
             if (row_dist > TERRAIN_FAR_END)  continue;
 
-            glBegin(GL_TRIANGLE_STRIP);
+            GL_BEGIN_WRAPPED(GL_TRIANGLE_STRIP);
             for (int x = base_x - TERRAIN_RADIUS; x <= base_x + TERRAIN_RADIUS; x += step) {
 
                     // ---------- COLUMN DISTANCE (DECLARE ONCE PER COLUMN) ----------

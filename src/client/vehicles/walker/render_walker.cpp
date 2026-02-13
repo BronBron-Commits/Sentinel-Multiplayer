@@ -1,3 +1,4 @@
+#include "render/render_stats.hpp"
 #include "render_walker.hpp"
 #include "walker_controller.hpp"
 
@@ -9,7 +10,7 @@
 // ------------------------------------------------------------
 static void draw_unit_cube()
 {
-    glBegin(GL_QUADS);
+    GL_BEGIN_WRAPPED(GL_QUADS);
 
     // +X
     glNormal3f(1, 0, 0);
@@ -99,7 +100,7 @@ void render_walker(const WalkerState& w)
     glPopMatrix();
 
     // ============================================================
-    // TORSO (SHORTENED — FIXES YOUR MAIN COMPLAINT)
+    // TORSO (SHORTENED ï¿½ FIXES YOUR MAIN COMPLAINT)
     // ============================================================
     glPushMatrix();
     glTranslatef(0.0f, 1.25f, 0.0f);

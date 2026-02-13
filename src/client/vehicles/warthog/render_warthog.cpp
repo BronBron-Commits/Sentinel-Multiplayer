@@ -1,4 +1,5 @@
-﻿#define WIN32_LEAN_AND_MEAN
+﻿#include "render/render_stats.hpp"
+#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
@@ -14,7 +15,7 @@
 
 static void draw_unit_cube()
 {
-    glBegin(GL_QUADS);
+    GL_BEGIN_WRAPPED(GL_QUADS);
 
     // +X
     glNormal3f(1, 0, 0);
@@ -71,7 +72,7 @@ static void draw_wheel_mesh()
     constexpr float R = 0.5f;
     constexpr float W = 0.35f;
 
-    glBegin(GL_QUAD_STRIP);
+    GL_BEGIN_WRAPPED(GL_QUAD_STRIP);
     for (int i = 0; i <= SEG; ++i) {
         float a = float(i) / SEG * 6.2831853f;
         float x = std::cos(a) * R;

@@ -1,3 +1,15 @@
+#include "render_stats.hpp"
+#ifdef _DEBUG
+#define VERBOSE_LOGGING 1
+#else
+#define VERBOSE_LOGGING 0
+#endif
+#if VERBOSE_LOGGING
+#include <cstdio>
+#define LOG_DRAW(...) std::printf(__VA_ARGS__)
+#else
+#define LOG_DRAW(...)
+#endif
 #include <glad/glad.h>
 #include <SDL.h>          // if you use SDL types
 #include <vector>
@@ -26,6 +38,7 @@ static GLsizei  g_vert_count = 0;
 // Low-level helpers
 // ------------------------------------------------------------
 
+
 static void push_tri(
     std::vector<Vertex>& v,
     float nx, float ny, float nz,
@@ -33,11 +46,13 @@ static void push_tri(
     float x1, float y1, float z1,
     float x2, float y2, float z2
 ) {
+    LOG_DRAW("[perf] push_tri called\n");
     v.push_back({ x0,y0,z0,nx,ny,nz });
     v.push_back({ x1,y1,z1,nx,ny,nz });
     v.push_back({ x2,y2,z2,nx,ny,nz });
 }
 
+// Helper for quad faces
 static void push_face(
     std::vector<Vertex>& v,
     float nx, float ny, float nz,
@@ -49,7 +64,6 @@ static void push_face(
     push_tri(v, nx, ny, nz, x0, y0, z0, x1, y1, z1, x2, y2, z2);
     push_tri(v, nx, ny, nz, x0, y0, z0, x2, y2, z2, x3, y3, z3);
 }
-
 // ------------------------------------------------------------
 // Geometry builders
 // ------------------------------------------------------------
@@ -207,6 +221,6 @@ void init_drone_mesh()
 void draw_drone_mesh()
 {
     glBindVertexArray(g_vao);
-    glDrawArrays(GL_TRIANGLES, 0, g_vert_count);
+    GL_DRAWARRAYS_WRAPPED(GL_TRIANGLES, 0, g_vert_count);
     glBindVertexArray(0);
 }

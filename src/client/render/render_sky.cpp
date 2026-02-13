@@ -1,3 +1,15 @@
+#include "render_stats.hpp"
+#ifdef _DEBUG
+#define VERBOSE_LOGGING 1
+#else
+#define VERBOSE_LOGGING 0
+#endif
+#if VERBOSE_LOGGING
+#include <cstdio>
+#define LOG_DRAW(...) std::printf(__VA_ARGS__)
+#else
+#define LOG_DRAW(...)
+#endif
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -32,12 +44,14 @@ static inline float lerp(float a, float b, float t)
 
 static void sky_color(float t, float& r, float& g, float& b)
 {
+    LOG_DRAW("[perf] sky_color t=%.2f\n", t);
     t = clampf(t, 0.0f, 1.0f);
     float h = std::pow(t, 0.72f);
 
     const float low_r = 1.08f, low_g = 0.28f, low_b = 0.18f;
     const float mid_r = 0.92f, mid_g = 0.40f, mid_b = 0.62f;
-    const float high_r = 0.18f, high_g = 0.32f, high_b = 0.70f;
+    // Make the top of the sky a deeper, richer blue
+    const float high_r = 0.10f, high_g = 0.22f, high_b = 0.92f;
 
     if (h < 0.6f)
     {
@@ -78,7 +92,7 @@ static void draw_fullscreen_sky()
     glPushMatrix();
     glLoadIdentity();
 
-    glBegin(GL_QUADS);
+    GL_BEGIN_WRAPPED(GL_QUADS);
 
     float r, g, b;
     sky_color(0.0f, r, g, b);
