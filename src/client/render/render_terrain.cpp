@@ -938,7 +938,31 @@ static void draw_tree(
     const float trunk_r = 0.32f * height_variation;
     float trunk_sway = wind * trunk_h * 0.006f;
 
-    glColor3f(0.42f, 0.30f, 0.18f);
+
+
+    // Assign tree type using a stable hash
+    float tree_type_val = hash((int)(x * 7), (int)(z * 13));
+    bool is_birch = tree_type_val > 0.7f;
+    bool is_black = !is_birch && tree_type_val < 0.2f;
+    bool is_sandy = !is_birch && !is_black && tree_type_val < 0.4f;
+    if (is_birch) {
+        // Birch: white bark
+        glColor3f(0.92f, 0.92f, 0.85f);
+    } else if (is_black) {
+        // Black bark
+        glColor3f(0.13f, 0.13f, 0.13f);
+    } else if (is_sandy) {
+        // Sandy bark
+        glColor3f(0.85f, 0.78f, 0.60f);
+    } else {
+        // Original: noise-based brown bark
+        float bark_noise = noise(x * 0.7f, z * 0.7f);
+        float bark_r = 0.38f + bark_noise * 0.10f;
+        float bark_g = 0.26f + bark_noise * 0.10f;
+        float bark_b = 0.15f + bark_noise * 0.10f;
+        glColor3f(bark_r, bark_g, bark_b);
+    }
+
 
     glBegin(GL_QUAD_STRIP);
     for (int i = 0; i <= 12; ++i) {
@@ -953,9 +977,33 @@ static void draw_tree(
             y + trunk_h,
             z + sa * trunk_r * 0.85f
         );
-
     }
     glEnd();
+
+    // Add birch stripes if birch
+    if (is_birch) {
+        int stripes = 5 + int(hash((int)(x * 17), (int)(z * 23)) * 3);
+        for (int s = 0; s < stripes; ++s) {
+            float t = (s + 1) / float(stripes + 1);
+            float stripe_y = y + trunk_h * t;
+            float stripe_h = trunk_h * 0.04f * (0.7f + hash(s, (int)x) * 0.6f);
+            float stripe_r = trunk_r * (0.7f + hash(s, (int)z) * 0.2f);
+            glColor3f(0.08f, 0.08f, 0.08f);
+            glBegin(GL_QUADS);
+            for (int i = 0; i < 12; ++i) {
+                float a0 = (float)i / 12.0f * 6.28318f;
+                float a1 = (float)(i + 1) / 12.0f * 6.28318f;
+                float ca0 = std::cos(a0), sa0 = std::sin(a0);
+                float ca1 = std::cos(a1), sa1 = std::sin(a1);
+                glVertex3f(x + ca0 * stripe_r, stripe_y, z + sa0 * stripe_r);
+                glVertex3f(x + ca1 * stripe_r, stripe_y, z + sa1 * stripe_r);
+                glVertex3f(x + ca1 * stripe_r, stripe_y + stripe_h, z + sa1 * stripe_r);
+                glVertex3f(x + ca0 * stripe_r, stripe_y + stripe_h, z + sa0 * stripe_r);
+            }
+            glEnd();
+            glColor3f(0.92f, 0.92f, 0.85f); // restore birch color
+        }
+    }
 
     // ------------------------------
 // Branches (structural support)

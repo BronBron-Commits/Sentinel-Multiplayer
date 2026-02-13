@@ -64,7 +64,7 @@ add_executable(client
     src/client/audio/audio_system.cpp
     src/client/core/camera_helpers.cpp
     src/client/util/math_util.cpp
-    src/client/world/npc_system.cpp
+    # src/client/world/npc_system.cpp (removed)
     src/client/world/combat_system.cpp
     src/client/ui/chat_ui.cpp
     src/client/ui/name_entry.cpp

@@ -39,7 +39,7 @@
 #include "vfx/combat_fx.hpp"
 #include "render/render_sky.hpp"
 
-#include "world/npc_system.hpp"
+
 
 #include "input/control_system.hpp"
 
@@ -1013,6 +1013,12 @@ int main()
 
 
 
+
+    // --- Set MSAA and sRGB attributes before window creation ---
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4); // 4x MSAA
+    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+
     SDL_Window* win = SDL_CreateWindow(
         "Sentinel Multiplayer Client",
         SDL_WINDOWPOS_CENTERED,
@@ -1022,7 +1028,6 @@ int main()
     );
 
     SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
-
 
     SDL_SetRelativeMouseMode(SDL_FALSE);
     SDL_ShowCursor(SDL_ENABLE);
@@ -1037,12 +1042,19 @@ int main()
 
 
 
+    if (!gladLoadGL()) {
+        printf("gladLoadGL failed\n");
+        return 1;
+    }
 
-
-if (!gladLoadGL()) {
-    printf("gladLoadGL failed\n");
-    return 1;
-}
+    // --- Enable MSAA and sRGB framebuffer if available ---
+    glEnable(GL_MULTISAMPLE);
+    GLint sRGB_capable = 0;
+    SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &sRGB_capable);
+    if (sRGB_capable)
+        glEnable(GL_FRAMEBUFFER_SRGB);
+    else
+        printf("[warn] sRGB framebuffer not available\n");
 
 if (g_run_mode == RunMode::VR) {
     if (xr_create_session_for_current_opengl_context()) {
@@ -1059,7 +1071,12 @@ glViewport(0, 0, g_fb_w, g_fb_h);
 
 
 
-    glClearColor(0.05f, 0.07f, 0.10f, 1.0f);
+
+    // Gamma-corrected clear color (linear to sRGB)
+    float gamma = 2.2f;
+    auto to_srgb = [gamma](float c) { return powf(c, 1.0f / gamma); };
+    // Make background darker for VR and desktop
+    glClearColor(to_srgb(0.025f), to_srgb(0.035f), to_srgb(0.05f), 1.0f);
 
 
 
@@ -1075,11 +1092,7 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_NORMALIZE);
     setup_lighting();
-    // ------------------------------------------------------------
-// Spawn local NPCs (AI-only, client-side)
-// ------------------------------------------------------------
-    srand(1337); // deterministic
-    npc_init();
+
 
 
 
@@ -1128,10 +1141,13 @@ glViewport(0, 0, g_fb_w, g_fb_h);
     auto xr_view_cb = [](int viewIndex, const XrView& view, int width, int height, unsigned int colorTex) {
         // FBO is bound by helper and texture attached; just render into it.
         glViewport(0, 0, width, height);
+        float gamma = 2.2f;
+        auto to_srgb = [gamma](float c) { return powf(c, 1.0f / gamma); };
+        // Make VR backgrounds darker
         if (viewIndex == 0)
-            glClearColor(0.12f, 0.16f, 0.22f, 1.0f);
+            glClearColor(to_srgb(0.06f), to_srgb(0.08f), to_srgb(0.11f), 1.0f);
         else
-            glClearColor(0.18f, 0.12f, 0.18f, 1.0f);
+            glClearColor(to_srgb(0.09f), to_srgb(0.06f), to_srgb(0.09f), 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         // TODO: call the engine's renderer with view/proj matrices here.
     };
@@ -1288,7 +1304,7 @@ if (g_run_mode == RunMode::VR) {
 
         float dt = (now - last_ticks) * 0.001f;
         last_ticks = now;
-        npc_update(dt);
+
         update_trail(dt);
 
         if (active_vehicle == ActiveVehicle::Drone)
@@ -1445,14 +1461,20 @@ if (g_run_mode == RunMode::VR) {
             warthog_update_camera(warthog, cam, cam_distance, dt);
         }
         else {
-            walker_update_camera(walker, cam, 100.0f, 50.0f, 0.785f); // example values
-
+            // Match walker camera to warthog's camera style
+            // Use cam_distance for distance, and tune cam_height/side_offset for similar feel
+            walker_update_camera(walker, cam, 4.5f, cam_distance, 0.0f);
         }
 
 
 
 
 
+
+        // Gamma-corrected clear color (linear to sRGB)
+        float gamma = 2.2f;
+        auto to_srgb = [gamma](float c) { return powf(c, 1.0f / gamma); };
+        glClearColor(to_srgb(0.025f), to_srgb(0.035f), to_srgb(0.05f), 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // ------------------------------------------------------------
@@ -1594,13 +1616,14 @@ if (g_run_mode == RunMode::VR) {
 
 
         // ------------------------------------------------------------
-// TERRAIN
-// ------------------------------------------------------------
-glEnable(GL_LIGHTING);
-glEnable(GL_COLOR_MATERIAL);
-draw_terrain(cam.pos.x, cam.pos.z, now * 0.001f);
-combat_fx_render(drone.yaw);
-render_trail_particles(cam);
+    // TERRAIN
+    // ------------------------------------------------------------
+    glEnable(GL_LIGHTING);
+    glEnable(GL_COLOR_MATERIAL);
+    draw_terrain(cam.pos.x, cam.pos.z, now * 0.001f);
+    combat_fx_render(drone.yaw);
+    render_trail_particles(cam);
+
 
 
 
