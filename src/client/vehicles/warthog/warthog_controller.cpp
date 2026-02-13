@@ -16,8 +16,8 @@ extern bool  warthog_orbit_active;
 // Vehicle tuning (FWD arcade)
 // ============================================================
 
-constexpr float MAX_SPEED = 14.0f;
-constexpr float ACCEL = 12.0f;
+constexpr float MAX_SPEED = 28.0f;
+constexpr float ACCEL = 24.0f;
 constexpr float BRAKE = 18.0f;
 
 constexpr float MAX_STEER_RAD = 0.45f;
@@ -69,6 +69,9 @@ void warthog_init(WarthogState& w)
 {
     w = {};
     w.y = sample_ground(w) + GROUND_OFFSET;
+    w.vy = 0.0f;
+    w.on_ground = true;
+    w.jump_count = 0;
 }
 
 void warthog_update(
@@ -156,10 +159,39 @@ void warthog_update(
     w.z += w.vz * dt;
 
     // --------------------------------------------------------
-    // Terrain follow
+    // Jump and gravity
     // --------------------------------------------------------
+    constexpr float GRAVITY = 32.0f;
+    constexpr float JUMP_VELOCITY = 17.15f;
     float ground = sample_ground(w) + GROUND_OFFSET;
-    w.y += (ground - w.y) * (1.0f - std::exp(-dt * 18.0f));
+
+    // Handle jump (spacebar = ctl.fire)
+    static bool prev_jump = false;
+    bool jump_pressed = ctl.fire;
+    if (jump_pressed && !prev_jump) {
+        if (w.on_ground || w.jump_count < 1) {
+            w.vy = JUMP_VELOCITY;
+            w.jump_count++;
+            w.on_ground = false;
+        }
+    }
+    prev_jump = jump_pressed;
+
+    // Apply gravity
+    w.vy -= GRAVITY * dt;
+    w.y += w.vy * dt;
+
+    // Ground collision
+    if (w.y <= ground) {
+        w.y = ground;
+        w.vy = 0.0f;
+        if (!w.on_ground) {
+            w.on_ground = true;
+            w.jump_count = 0;
+        }
+    } else {
+        w.on_ground = false;
+    }
 }
 
 // ============================================================

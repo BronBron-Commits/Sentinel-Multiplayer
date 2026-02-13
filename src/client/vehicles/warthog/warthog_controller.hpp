@@ -17,6 +17,11 @@ struct WarthogState
 
     float vx = 0.0f;
     float vz = 0.0f;
+
+    // Jumping
+    float vy = 0.0f;
+    bool on_ground = true;
+    int jump_count = 0;
 };
 
 void warthog_init(WarthogState& w);
