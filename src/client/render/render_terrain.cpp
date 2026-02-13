@@ -441,16 +441,15 @@ static void set_zone_color(
 
     }
     else if (zone == TerrainZone::Dirt) {
-
-        r = 0.44f + h * 0.18f;
-        g = 0.34f + h * 0.12f;
-        b = 0.24f;
-
-        // Dark wet soil
-        r *= lerp(0.85f, 1.05f, moisture);
-        g *= lerp(0.80f, 1.00f, moisture);
-        b *= lerp(0.75f, 0.95f, moisture);
-
+        // Watery blue color for the path
+        r = lerp(0.10f, 0.18f, moisture); // subtle blue tint
+        g = lerp(0.35f, 0.55f, moisture); // more green/blue
+        b = lerp(0.65f, 0.95f, moisture); // strong blue, more with moisture
+        // Optionally add some noise for water shimmer
+        float shimmer = 0.04f * (macro + mid + micro);
+        r += shimmer;
+        g += shimmer;
+        b += shimmer;
     }
     else { // Rock
 
@@ -1585,11 +1584,16 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
                             ROAD_SHOULDER
                         );
 
+                        // Compute moisture as in set_zone_color
+                        float h_norm = std::clamp(wy / HEIGHT_GAIN, 0.0f, 1.0f);
+                        float moisture = std::clamp(1.0f - h_norm, 0.0f, 1.0f);
+
                         if (dirt_blend < 1.0f) {
+                            // Watery blue blend for the path
                             glColor3f(
-                                lerp(0.42f, 0.30f, dirt_blend),
-                                lerp(0.34f, 0.26f, dirt_blend),
-                                lerp(0.22f, 0.18f, dirt_blend)
+                                lerp(lerp(0.10f, 0.18f, moisture), 0.30f, dirt_blend),
+                                lerp(lerp(0.35f, 0.55f, moisture), 0.26f, dirt_blend),
+                                lerp(lerp(0.65f, 0.95f, moisture), 0.18f, dirt_blend)
                             );
                         }
 
