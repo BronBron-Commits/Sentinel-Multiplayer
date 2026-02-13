@@ -1098,13 +1098,21 @@ static void draw_tree(
                     trunk_h * lerp(0.018f, 0.028f, hash(k * 7, i * 11));
 
 
-                float tint = 0.9f + hash(k * 19, i * 23) * 0.1f;
+float tint = 0.9f + hash(k * 19, i * 23) * 0.1f;
 
-                glColor3f(
-                    (1.00f) * tint,   // bright pink
-                    (0.38f) * tint,
-                    (0.62f) * tint
-                );
+// Base hue variation (0 = more purple, 1 = more pink)
+float hueMix = hash(i * 37 + k * 13, k * 53);
+
+// Define two endpoints
+float r1 = 0.85f, g1 = 0.20f, b1 = 0.75f; // purple-magenta
+float r2 = 1.00f, g2 = 0.45f, b2 = 0.70f; // bright pink
+
+// Interpolate between them
+float r = lerp(r1, r2, hueMix) * tint;
+float g = lerp(g1, g2, hueMix) * tint;
+float b = lerp(b1, b2, hueMix) * tint;
+
+glColor3f(r, g, b);
 
                 glBegin(GL_QUADS);
 
