@@ -9,6 +9,12 @@
 				"$msCompile"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Build client (desktop)",
+			"type": "shell",
+			"command": "cmake --build build-release --target client --config Release",
+			"group": "build"
 		}
 	]
 }

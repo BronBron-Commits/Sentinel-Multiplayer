@@ -963,8 +963,8 @@ static void draw_tree(
     // ------------------------------
     const float trunk_h = 40.5f * height_variation;
     // Add stable per-tree trunk thickness variation
-    float trunk_thickness = lerp(0.75f, 1.25f, hash((int)(x * 23), (int)(z * 37)));
-    const float trunk_r = 0.32f * height_variation * trunk_thickness;
+    float trunk_thickness = lerp(1.2f, 2.0f, hash((int)(x * 23), (int)(z * 37))); // much thicker
+    const float trunk_r = 0.45f * height_variation * trunk_thickness; // increase base radius
     float trunk_sway = wind * trunk_h * 0.006f;
 
 
@@ -1163,7 +1163,7 @@ glColor3f(r, g, b);
 
     glDepthMask(GL_TRUE);   // IMPORTANT
 
-    const int CLUSTERS = int(28 * height_variation);
+    const int CLUSTERS = int(56 * height_variation); // doubled for thicker canopy
 
 
     // Canopy starts ON the trunk, not floating above it
@@ -1203,7 +1203,7 @@ glColor3f(r, g, b);
         }
 
 
-        float size = trunk_h * lerp(0.035f, 0.055f, hb);
+        float size = trunk_h * lerp(0.045f, 0.07f, hb); // 25% larger clusters
 
 
 
