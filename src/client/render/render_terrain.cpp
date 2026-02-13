@@ -75,7 +75,7 @@ static constexpr int   LEAF_PARTICLES_PER_TREE = 18;
 static constexpr float LEAF_FALL_RADIUS = 2.2f;
 static constexpr float LEAF_FALL_HEIGHT = 42.0f;
 static constexpr float LEAF_FALL_SPEED = 0.6f;
-static constexpr float LEAF_SIZE = 0.18f;
+static constexpr float LEAF_SIZE = 0.32f;
 static constexpr float LEAF_MAX_DIST = 120.0f;
 
 
