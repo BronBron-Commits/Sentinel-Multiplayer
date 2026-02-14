@@ -1323,7 +1323,7 @@ if (g_run_mode == RunMode::VR) {
                 {
                     constexpr float ORBIT_SENS = 0.0045f;
                     extern float walker_cam_orbit;
-                    walker_cam_orbit -= e.motion.xrel * ORBIT_SENS;
+                    walker_cam_orbit += e.motion.xrel * ORBIT_SENS;
                 }
             }
 
@@ -1504,7 +1504,7 @@ if (g_run_mode == RunMode::VR) {
             if (walker_camera_mode == WalkerCameraMode::FirstPerson) {
                 walker_update_camera_first_person(walker, cam);
             } else {
-                walker_update_camera(walker, cam, 4.5f, cam_distance, 0.0f);
+                walker_update_camera(walker, cam, 10.0f, cam_distance, 0.0f); // Raised camera height further
             }
             camera_pitch = 0.0f;
         }
