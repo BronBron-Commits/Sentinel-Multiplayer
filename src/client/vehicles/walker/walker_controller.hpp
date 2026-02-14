@@ -10,6 +10,7 @@ struct WalkerState {
     float z;
 
     float yaw;
+    float pitch = 0.0f; // up/down look
 
     // Animation state
     float walk_phase;   // radians
@@ -31,4 +32,10 @@ void walker_update_camera(
     float cam_height = 15.0f,
     float cam_distance = 25.0f,
     float cam_side_offset = 0.0f  // optional sideways offset
+);
+
+// First-person camera for walker
+void walker_update_camera_first_person(
+    const WalkerState& w,
+    Camera& cam
 );

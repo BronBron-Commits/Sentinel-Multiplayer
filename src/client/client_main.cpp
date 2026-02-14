@@ -1,6 +1,11 @@
 ﻿#include "render/render_stats.hpp"
 #include "render/water_reflect_shader.hpp"
 #include <atomic>
+#include <optional>
+
+// Camera mode toggle for walker
+enum class WalkerCameraMode { ThirdPerson, FirstPerson };
+static WalkerCameraMode walker_camera_mode = WalkerCameraMode::ThirdPerson;
 std::atomic<int> g_draw_call_count{0};
 #define SDL_MAIN_HANDLED
 #define WIN32_LEAN_AND_MEAN
@@ -1489,9 +1494,18 @@ if (g_run_mode == RunMode::VR) {
             camera_pitch = 0.0f; // Warthog does not tilt sky
         }
         else {
-            walker_update_camera(walker, cam, 4.5f, cam_distance, 0.0f);
+            if (walker_camera_mode == WalkerCameraMode::FirstPerson) {
+                walker_update_camera_first_person(walker, cam);
+            } else {
+                walker_update_camera(walker, cam, 4.5f, cam_distance, 0.0f);
+            }
             camera_pitch = 0.0f;
         }
+            // Toggle walker camera mode with F1
+            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F1 && active_vehicle == ActiveVehicle::Walker) {
+                walker_camera_mode = (walker_camera_mode == WalkerCameraMode::FirstPerson)
+                    ? WalkerCameraMode::ThirdPerson : WalkerCameraMode::FirstPerson;
+            }
 
 
 

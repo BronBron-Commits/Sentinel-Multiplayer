@@ -5,6 +5,25 @@
 
 #include <cmath>
 
+// First-person camera for walker
+void walker_update_camera_first_person(
+    const WalkerState& w,
+    Camera& cam
+)
+{
+    float cy = std::cos(w.yaw);
+    float sy = std::sin(w.yaw);
+    // Camera at head position, looking forward
+    cam.pos = { w.x, w.y + 1.6f, w.z };
+    cam.target = { w.x + cy, w.y + 1.6f, w.z + sy };
+}
+#include "walker_controller.hpp"
+#include "input/control_system.hpp"
+#include "render/camera.hpp"
+#include "render/render_terrain.hpp"
+
+#include <cmath>
+
 // ------------------------------------------------------------
 // Tuning
 // ------------------------------------------------------------
@@ -38,17 +57,22 @@ void walker_update(
 )
 {
     // --------------------------------------------------------
-    // TURNING — DRIVEN BY LOOK (mouse + right stick)
+    // TURN WITH MOUSE, LOOK UP/DOWN WITH MOUSE
     // --------------------------------------------------------
-    w.yaw += ctl.look_dx * TURN_SPEED * dt;
+    float move_fwd = ctl.forward;
+    float move_side = ctl.strafe;
 
-    // wrap yaw into [0, 2π)
+    // Mouse look: update yaw and pitch
+    w.yaw += ctl.look_dx * 0.015f; // sensitivity
+    w.pitch -= ctl.look_dy * 0.012f; // invert Y for natural look
+    // Clamp pitch to avoid flipping
+    if (w.pitch > 1.2f) w.pitch = 1.2f;
+    if (w.pitch < -1.2f) w.pitch = -1.2f;
+
+    // Wrap yaw
     if (w.yaw > 6.2831853f) w.yaw -= 6.2831853f;
     if (w.yaw < 0.0f)      w.yaw += 6.2831853f;
 
-    // --------------------------------------------------------
-    // MOVEMENT BASIS (FORWARD = FACING DIRECTION)
-    // --------------------------------------------------------
     float cy = std::cos(w.yaw);
     float sy = std::sin(w.yaw);
 
@@ -59,12 +83,6 @@ void walker_update(
     // right vector (perpendicular)
     float right_x = -sy;
     float right_z = cy;
-
-    // --------------------------------------------------------
-    // MOVE
-    // --------------------------------------------------------
-    float move_fwd = ctl.forward;
-    float move_side = ctl.strafe;
 
     w.x += (fwd_x * move_fwd + right_x * move_side) * MOVE_SPEED * dt;
     w.z += (fwd_z * move_fwd + right_z * move_side) * MOVE_SPEED * dt;
@@ -97,15 +115,22 @@ void walker_update_camera(
     float cam_side_offset  // match .hpp
 )
 {
-    // forward direction from walker yaw
+    // Camera direction from yaw and pitch
     float cy = std::cos(w.yaw);
     float sy = std::sin(w.yaw);
+    float cp = std::cos(w.pitch);
+    float sp = std::sin(w.pitch);
 
-    // Camera target: aim at walker’s head
+    // Forward direction with pitch
+    float fx = cy * cp;
+    float fy = sp;
+    float fz = sy * cp;
+
+    // Camera target: look where head is facing
     cam.target = {
-        w.x,
-        w.y + 1.6f,
-        w.z
+        w.x + fx,
+        w.y + 1.6f + fy,
+        w.z + fz
     };
 
     // Camera position: above and behind, optionally offset sideways
