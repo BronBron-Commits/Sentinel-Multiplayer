@@ -12,7 +12,8 @@ struct ControlState
 
     // --- Movement ---
     float forward = 0.0f;
-    float strafe = 0.0f;
+    float strafe = 0.0f; // (for other vehicles)
+    float turn = 0.0f;   // (for walker tank controls)
     float vertical = 0.0f;
 
     bool fire = false;

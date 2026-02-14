@@ -1,3 +1,5 @@
+extern float walker_cam_orbit;
+extern bool walker_orbit_active;
 #pragma once
 
 struct ControlState;
@@ -11,6 +13,7 @@ struct WalkerState {
 
     float yaw;
     float pitch = 0.0f; // up/down look
+    float visual_yaw = 0.0f; // for smooth model turning
 
     // Animation state
     float walk_phase;   // radians

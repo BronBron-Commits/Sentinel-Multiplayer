@@ -1,4 +1,7 @@
-﻿#include "walker_controller.hpp"
+﻿// Orbit state for walker camera (like warthog)
+float walker_cam_orbit = 0.0f;
+bool walker_orbit_active = false;
+#include "walker_controller.hpp"
 #include "input/control_system.hpp"
 #include "render/camera.hpp"
 #include "render/render_terrain.hpp"
@@ -56,52 +59,36 @@ void walker_update(
     float dt
 )
 {
-    // --------------------------------------------------------
-    // TURN WITH MOUSE, LOOK UP/DOWN WITH MOUSE
-    // --------------------------------------------------------
+    // Tank controls: forward/backward = move, left/right = rotate
+
     float move_fwd = ctl.forward;
     float move_side = ctl.strafe;
-
-    // Mouse look: update yaw and pitch
-    w.yaw += ctl.look_dx * 0.015f; // sensitivity
-    w.pitch -= ctl.look_dy * 0.012f; // invert Y for natural look
-    // Clamp pitch to avoid flipping
-    if (w.pitch > 1.2f) w.pitch = 1.2f;
-    if (w.pitch < -1.2f) w.pitch = -1.2f;
-
-    // Wrap yaw
-    if (w.yaw > 6.2831853f) w.yaw -= 6.2831853f;
-    if (w.yaw < 0.0f)      w.yaw += 6.2831853f;
-
-    float cy = std::cos(w.yaw);
-    float sy = std::sin(w.yaw);
-
-    // forward vector
+    // WASD directions are relative to camera (orbit)
+    float cam_yaw = w.yaw + walker_cam_orbit;
+    float cy = std::cos(cam_yaw);
+    float sy = std::sin(cam_yaw);
+    // Forward vector (camera forward)
     float fwd_x = cy;
     float fwd_z = sy;
-
-    // right vector (perpendicular)
+    // Right vector (perpendicular)
     float right_x = -sy;
     float right_z = cy;
-
     w.x += (fwd_x * move_fwd + right_x * move_side) * MOVE_SPEED * dt;
     w.z += (fwd_z * move_fwd + right_z * move_side) * MOVE_SPEED * dt;
 
-    // --------------------------------------------------------
-    // GROUNDING
-    // --------------------------------------------------------
+    // Grounding
     w.y = terrain_height(w.x, w.z) + FOOT_OFFSET;
 
-    // --------------------------------------------------------
-    // WALK ANIMATION DRIVER
-    // --------------------------------------------------------
-    w.walk_speed = std::fabs(move_fwd) + std::fabs(move_side);
-
+    // Animation driver
+    w.walk_speed = std::fabs(move_fwd);
     if (w.walk_speed > 0.01f) {
         w.walk_phase += w.walk_speed * 6.0f * dt;
         if (w.walk_phase > 6.2831853f)
             w.walk_phase -= 6.2831853f;
     }
+
+    // Model facing matches yaw
+    w.visual_yaw = w.yaw;
 }
 
 // ------------------------------------------------------------
@@ -115,28 +102,14 @@ void walker_update_camera(
     float cam_side_offset  // match .hpp
 )
 {
-    // Camera direction from yaw and pitch
-    float cy = std::cos(w.yaw);
-    float sy = std::sin(w.yaw);
-    float cp = std::cos(w.pitch);
-    float sp = std::sin(w.pitch);
-
-    // Forward direction with pitch
-    float fx = cy * cp;
-    float fy = sp;
-    float fz = sy * cp;
-
-    // Camera target: look where head is facing
-    cam.target = {
-        w.x + fx,
-        w.y + 1.6f + fy,
-        w.z + fz
-    };
-
-    // Camera position: above and behind, optionally offset sideways
+    // Orbit-capable chase cam (like warthog)
+    float cam_yaw = w.yaw + walker_cam_orbit;
+    float cy = std::cos(cam_yaw);
+    float sy = std::sin(cam_yaw);
     cam.pos = {
-        w.x - cy * cam_distance + (-sy) * cam_side_offset,
+        w.x - cy * cam_distance,
         w.y + cam_height,
-        w.z - sy * cam_distance + cy * cam_side_offset
+        w.z - sy * cam_distance
     };
+    cam.target = { w.x, w.y + 1.5f, w.z };
 }

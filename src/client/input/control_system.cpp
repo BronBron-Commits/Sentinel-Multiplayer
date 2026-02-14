@@ -72,6 +72,11 @@ void controls_update(bool ui_blocked)
     if (keys[SDL_SCANCODE_W]) g_control.forward += 1.0f;
     if (keys[SDL_SCANCODE_S]) g_control.forward -= 1.0f;
 
+    // For walker: A/D = turn, not strafe
+    g_control.turn = 0.0f;
+    if (keys[SDL_SCANCODE_D]) g_control.turn += 1.0f;
+    if (keys[SDL_SCANCODE_A]) g_control.turn -= 1.0f;
+    // For other vehicles, keep strafe for left/right
     if (keys[SDL_SCANCODE_D]) g_control.strafe += 1.0f;
     if (keys[SDL_SCANCODE_A]) g_control.strafe -= 1.0f;
 

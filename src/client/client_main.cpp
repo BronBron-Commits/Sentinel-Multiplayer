@@ -1318,6 +1318,13 @@ if (g_run_mode == RunMode::VR) {
                     constexpr float ORBIT_SENS = 0.0045f;
                     warthog_cam_orbit -= e.motion.xrel * ORBIT_SENS;
                 }
+                // Walker orbit is ADDITIVE, not exclusive
+                if (active_vehicle == ActiveVehicle::Walker)
+                {
+                    constexpr float ORBIT_SENS = 0.0045f;
+                    extern float walker_cam_orbit;
+                    walker_cam_orbit -= e.motion.xrel * ORBIT_SENS;
+                }
             }
 
 
