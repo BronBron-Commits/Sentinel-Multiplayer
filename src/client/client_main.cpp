@@ -157,6 +157,7 @@ static void fix_working_directory()
     std::filesystem::current_path(path.parent_path());
 }
 
+
 // ------------------------------------------------------------
 // Forward declarations (required by C++)
 // ------------------------------------------------------------
@@ -165,7 +166,77 @@ struct Camera;
 static void render_trail_particles(const Camera& cam);
 static float lerp_angle(float a, float b, float t);
 
+// Forward declarations for font and text rendering (for HUD reuse)
+extern TTF_Font* g_chat_font;
+static GLuint render_text_texture(TTF_Font* font, const std::string& text, int& out_w, int& out_h);
+static void draw_drone_hud(const DroneState& drone, const ControlState& ctl, const Camera& cam);
+
 static bool prev_space = false;
+// HUD overlay for drone view
+static void draw_drone_hud(const DroneState& drone, const ControlState& ctl, const Camera& cam) {
+    // Set up 2D orthographic projection
+    glPushAttrib(GL_ENABLE_BIT | GL_TRANSFORM_BIT);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, g_fb_w, g_fb_h, 0, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    // --- Crosshair in the center ---
+    float cx = g_fb_w * 0.5f;
+    float cy = g_fb_h * 0.5f - 24.0f; // Move crosshair up by 24 pixels
+    float cross_len = 10.0f;
+    float cross_thick = 2.0f;
+    glColor4f(0.9f, 0.95f, 1.0f, 0.55f);
+    // Draw an X crosshair using two diagonal quads
+    glBegin(GL_QUADS);
+    // Diagonal: top-left to bottom-right
+    glVertex2f(cx - cross_len, cy - cross_len + cross_thick);
+    glVertex2f(cx - cross_len + cross_thick, cy - cross_len);
+    glVertex2f(cx + cross_len, cy + cross_len - cross_thick);
+    glVertex2f(cx + cross_len - cross_thick, cy + cross_len);
+    // Diagonal: bottom-left to top-right
+    glVertex2f(cx - cross_len, cy + cross_len - cross_thick);
+    glVertex2f(cx - cross_len + cross_thick, cy + cross_len);
+    glVertex2f(cx + cross_len, cy - cross_len + cross_thick);
+    glVertex2f(cx + cross_len - cross_thick, cy - cross_len);
+    glEnd();
+
+    // --- Altitude in top left ---
+    char buf[64];
+    int tw, th;
+    float text_x = 48.0f;
+    float text_y = 24.0f;
+    snprintf(buf, sizeof(buf), "ALT: %.2f", drone.y);
+    GLuint tex = render_text_texture(g_chat_font, buf, tw, th);
+    if (tex) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glColor4f(1, 1, 1, 1);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0, 0); glVertex2f(text_x, text_y);
+        glTexCoord2f(1, 0); glVertex2f(text_x + tw, text_y);
+        glTexCoord2f(1, 1); glVertex2f(text_x + tw, text_y + th);
+        glTexCoord2f(0, 1); glVertex2f(text_x, text_y + th);
+        glEnd();
+        glDeleteTextures(1, &tex);
+        glDisable(GL_TEXTURE_2D);
+    }
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopAttrib();
+}
 
 
 // ------------------------------------------------------------
@@ -464,6 +535,8 @@ static void render_world_for_xr(const XrView& view, int width, int height)
             glEnable(GL_LIGHTING);
         }
         glPopMatrix();
+            // Draw HUD overlay for drone
+            draw_drone_hud(drone, ctl, camXR);
 
         // --- Warthog ---
         glPushMatrix();
@@ -1488,7 +1561,7 @@ if (g_run_mode == RunMode::VR) {
         }
         else if (active_vehicle == ActiveVehicle::Warthog) {
             warthog_update_camera(warthog, cam, cam_distance, dt);
-            camera_pitch = 0.0f; // Warthog does not tilt sky
+            camera_pitch = warthog.pitch;
         }
         else {
             if (walker_camera_mode == WalkerCameraMode::FirstPerson) {
@@ -1634,10 +1707,12 @@ if (g_run_mode == RunMode::VR) {
         // ============================================================
         // SKY (infinite distance, camera-rotation only)
         // ============================================================
+        // Always set sky_pitch right before drawing sky to avoid accidental overwrite
+        float sky_pitch = camera_pitch;
         draw_sky(
             now * 0.001f,
             camera_yaw,
-            camera_pitch
+            sky_pitch
         );
 
 
@@ -1673,55 +1748,43 @@ if (g_run_mode == RunMode::VR) {
 
 
         if (active_vehicle == ActiveVehicle::Drone) {
-
             // Local drone (metallic)
             glEnable(GL_LIGHTING);
             glDisable(GL_COLOR_MATERIAL);
-
-
             bool local_idle =
                 std::fabs(ctl.forward) < 0.01f &&
                 std::fabs(ctl.strafe) < 0.01f &&
                 !ctl.boost;
-
-
             IdlePose idle{};
             if (local_idle) {
                 idle = compute_idle_pose(g_local_player_id, now * 0.001);
             }
-
             glPushMatrix();
             glTranslatef(drone.x, drone.y + idle.y_offset, drone.z);
-
             glRotatef((drone.yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
             glRotatef(drone.pitch * 57.2958f + idle.pitch, 1, 0, 0);
             glRotatef(drone.roll * 57.2958f + idle.roll, 0, 0, 1);
-
-
             glDisable(GL_LIGHTING);
             glUseProgram(g_drone_program);
-
             // material
             glUniform3f(uBaseColor, 0.65f, 0.68f, 0.72f);
             glUniform1f(uMetallic, 0.90f);
             glUniform1f(uRoughness, 0.32f);
-
             // camera + light
             glUniform3f(uCameraPos, cam.pos.x, cam.pos.y, cam.pos.z);
             glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
             glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
-
             // matrices
             upload_fixed_matrices();
-
             // draw
             draw_drone_mesh();
-
             glUseProgram(0);
             glEnable(GL_LIGHTING);
-
             glPopMatrix();
         }
+
+        // --- Draw HUD overlay for drone after all 3D rendering, after chat overlay, just before buffer swap ---
+        // (This ensures the crosshair overlays the scene but not the drone model itself)
         else if (active_vehicle == ActiveVehicle::Warthog) {
             render_warthog(warthog);
         }
@@ -1934,6 +1997,10 @@ if (g_run_mode == RunMode::VR) {
 
         if (xr_is_session_running()) xr_render_frame(&LocalBridge::call);
 
+        // Draw HUD overlay for drone last, so it never appears in front of the drone model
+        if (active_vehicle == ActiveVehicle::Drone) {
+            draw_drone_hud(drone, ctl, cam);
+        }
         SDL_GL_SwapWindow(win);
     }
     combat_fx_shutdown();

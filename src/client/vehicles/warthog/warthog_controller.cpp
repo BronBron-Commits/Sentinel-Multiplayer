@@ -81,10 +81,14 @@ void warthog_update(
 )
 {
     // --- Walker-style camera-relative WASD movement and facing ---
+    constexpr float MOUSE_SENS = 0.00180625f;
     float move_fwd = ctl.forward;
     float move_side = ctl.strafe;
     // Classic vehicle controls: W/S = forward/back, A/D = turn wheels
     // Mouse look (warthog_cam_orbit) only rotates the camera, not the vehicle's yaw or movement
+    // Update pitch for sky/camera (like drone)
+    w.pitch -= ctl.look_dy * MOUSE_SENS;
+    w.pitch = std::clamp(w.pitch, -1.2f, 1.2f);
     float speed = move_fwd * MAX_SPEED;
     // Steering (A/D)
     float target_steer = -move_side * MAX_STEER_RAD;
