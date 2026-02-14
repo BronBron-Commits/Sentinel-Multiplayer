@@ -1,4 +1,10 @@
-﻿#include "render/render_stats.hpp"
+﻿#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+#ifndef M_PI_2
+#define M_PI_2 1.57079632679489661923
+#endif
+#include "render/render_stats.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -68,10 +74,36 @@ static void draw_unit_cube()
 
 static void draw_wheel_mesh()
 {
-    constexpr int SEG = 20;
+    constexpr int SEG = 32;
     constexpr float R = 0.5f;
     constexpr float W = 0.35f;
+    constexpr float HUB_R = 0.18f;
+    constexpr float TREAD_DEPTH = 0.06f;
 
+    // Tire side faces
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_FAN);
+    glNormal3f(0, -1, 0);
+    glVertex3f(0, -W, 0);
+    for (int i = 0; i <= SEG; ++i) {
+        float a = float(i) / SEG * 6.2831853f;
+        float x = std::cos(a) * R;
+        float z = std::sin(a) * R;
+        glVertex3f(x, -W, z);
+    }
+    glEnd();
+
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_FAN);
+    glNormal3f(0, 1, 0);
+    glVertex3f(0, W, 0);
+    for (int i = 0; i <= SEG; ++i) {
+        float a = float(i) / SEG * 6.2831853f;
+        float x = std::cos(a) * R;
+        float z = std::sin(a) * R;
+        glVertex3f(x, W, z);
+    }
+    glEnd();
+
+    // Tire outer wall
     GL_BEGIN_WRAPPED(GL_QUAD_STRIP);
     for (int i = 0; i <= SEG; ++i) {
         float a = float(i) / SEG * 6.2831853f;
@@ -82,6 +114,55 @@ static void draw_wheel_mesh()
         glVertex3f(x, W, z);
     }
     glEnd();
+
+    // Hub (center cap)
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_FAN);
+    glNormal3f(0, -1, 0);
+    glVertex3f(0, -W + 0.01f, 0);
+    for (int i = 0; i <= SEG; ++i) {
+        float a = float(i) / SEG * 6.2831853f;
+        float x = std::cos(a) * HUB_R;
+        float z = std::sin(a) * HUB_R;
+        glVertex3f(x, -W + 0.01f, z);
+    }
+    glEnd();
+
+    GL_BEGIN_WRAPPED(GL_TRIANGLE_FAN);
+    glNormal3f(0, 1, 0);
+    glVertex3f(0, W - 0.01f, 0);
+    for (int i = 0; i <= SEG; ++i) {
+        float a = float(i) / SEG * 6.2831853f;
+        float x = std::cos(a) * HUB_R;
+        float z = std::sin(a) * HUB_R;
+        glVertex3f(x, W - 0.01f, z);
+    }
+    glEnd();
+
+    // Tread pattern (simple ridges)
+    GL_BEGIN_WRAPPED(GL_QUADS);
+    for (int i = 0; i < SEG; ++i) {
+        float a0 = float(i) / SEG * 6.2831853f;
+        float a1 = float(i + 1) / SEG * 6.2831853f;
+        float x0 = std::cos(a0) * R;
+        float z0 = std::sin(a0) * R;
+        float x1 = std::cos(a1) * R;
+        float z1 = std::sin(a1) * R;
+        float x0t = std::cos(a0) * (R + TREAD_DEPTH);
+        float z0t = std::sin(a0) * (R + TREAD_DEPTH);
+        float x1t = std::cos(a1) * (R + TREAD_DEPTH);
+        float z1t = std::sin(a1) * (R + TREAD_DEPTH);
+        // Outer ridge
+        glNormal3f((x0 + x1) * 0.5f, 0, (z0 + z1) * 0.5f);
+        glVertex3f(x0, -W, z0);
+        glVertex3f(x1, -W, z1);
+        glVertex3f(x1t, -W, z1t);
+        glVertex3f(x0t, -W, z0t);
+        glVertex3f(x0, W, z0);
+        glVertex3f(x1, W, z1);
+        glVertex3f(x1t, W, z1t);
+        glVertex3f(x0t, W, z0t);
+    }
+    glEnd();
 }
 
 // ============================================================
@@ -90,10 +171,122 @@ static void draw_wheel_mesh()
 
 static void draw_chassis()
 {
-    glPushMatrix();
-    glScalef(1.8f, 0.45f, 3.2f);
-    draw_unit_cube();
-    glPopMatrix();
+    // Draw a rounded box for the chassis
+    constexpr float RX = 1.8f * 0.5f, RY = 0.45f * 0.5f, RZ = 3.2f * 0.5f;
+    constexpr float RAD = 0.22f; // corner radius
+    constexpr int SEG = 12; // smoothness
+
+    // Fill in main flat faces between rounded corners
+    // Top face
+    glBegin(GL_QUADS);
+    glNormal3f(0, 1, 0);
+    glVertex3f(-RX + RAD, RY, -RZ + RAD);
+    glVertex3f( RX - RAD, RY, -RZ + RAD);
+    glVertex3f( RX - RAD, RY,  RZ - RAD);
+    glVertex3f(-RX + RAD, RY,  RZ - RAD);
+    glEnd();
+    // Bottom face
+    glBegin(GL_QUADS);
+    glNormal3f(0, -1, 0);
+    glVertex3f(-RX + RAD, -RY, -RZ + RAD);
+    glVertex3f(-RX + RAD, -RY,  RZ - RAD);
+    glVertex3f( RX - RAD, -RY,  RZ - RAD);
+    glVertex3f( RX - RAD, -RY, -RZ + RAD);
+    glEnd();
+    // Front face
+    glBegin(GL_QUADS);
+    glNormal3f(0, 0, 1);
+    glVertex3f(-RX + RAD, -RY + RAD, RZ);
+    glVertex3f( RX - RAD, -RY + RAD, RZ);
+    glVertex3f( RX - RAD,  RY - RAD, RZ);
+    glVertex3f(-RX + RAD,  RY - RAD, RZ);
+    glEnd();
+    // Back face
+    glBegin(GL_QUADS);
+    glNormal3f(0, 0, -1);
+    glVertex3f(-RX + RAD, -RY + RAD, -RZ);
+    glVertex3f(-RX + RAD,  RY - RAD, -RZ);
+    glVertex3f( RX - RAD,  RY - RAD, -RZ);
+    glVertex3f( RX - RAD, -RY + RAD, -RZ);
+    glEnd();
+    // Left face
+    glBegin(GL_QUADS);
+    glNormal3f(-1, 0, 0);
+    glVertex3f(-RX, -RY + RAD, -RZ + RAD);
+    glVertex3f(-RX,  RY - RAD, -RZ + RAD);
+    glVertex3f(-RX,  RY - RAD,  RZ - RAD);
+    glVertex3f(-RX, -RY + RAD,  RZ - RAD);
+    glEnd();
+    // Right face
+    glBegin(GL_QUADS);
+    glNormal3f(1, 0, 0);
+    glVertex3f(RX, -RY + RAD, -RZ + RAD);
+    glVertex3f(RX, -RY + RAD,  RZ - RAD);
+    glVertex3f(RX,  RY - RAD,  RZ - RAD);
+    glVertex3f(RX,  RY - RAD, -RZ + RAD);
+    glEnd();
+
+    // Draw sides (with cutouts for rounded corners)
+    for (int sy = -1; sy <= 1; sy += 2) {
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= SEG; ++i) {
+            float t = float(i) / SEG * M_PI_2;
+            float x = std::cos(t) * (RX - RAD);
+            float z = std::sin(t) * (RZ - RAD);
+            glNormal3f(0, sy, 0);
+            glVertex3f(x, sy * RY, z);
+            glVertex3f(-x, sy * RY, z);
+        }
+        glEnd();
+    }
+    // Draw front/back faces (with rounded corners)
+    for (int sz = -1; sz <= 1; sz += 2) {
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= SEG; ++i) {
+            float t = float(i) / SEG * M_PI_2;
+            float x = std::cos(t) * (RX - RAD);
+            float y = std::sin(t) * (RY - RAD);
+            glNormal3f(0, 0, sz);
+            glVertex3f(x, y, sz * RZ);
+            glVertex3f(-x, y, sz * RZ);
+        }
+        glEnd();
+    }
+    // Draw left/right faces (with rounded corners)
+    for (int sx = -1; sx <= 1; sx += 2) {
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= SEG; ++i) {
+            float t = float(i) / SEG * M_PI_2;
+            float z = std::cos(t) * (RZ - RAD);
+            float y = std::sin(t) * (RY - RAD);
+            glNormal3f(sx, 0, 0);
+            glVertex3f(sx * RX, y, z);
+            glVertex3f(sx * RX, y, -z);
+        }
+        glEnd();
+    }
+    // Draw rounded corners (quarter-sphere fans)
+    for (int sx = -1; sx <= 1; sx += 2) {
+        for (int sy = -1; sy <= 1; sy += 2) {
+            for (int sz = -1; sz <= 1; sz += 2) {
+                glBegin(GL_TRIANGLE_FAN);
+                glNormal3f(sx, sy, sz);
+                glVertex3f(sx * (RX - RAD), sy * (RY - RAD), sz * (RZ - RAD));
+                for (int i = 0; i <= SEG; ++i) {
+                    float phi = float(i) / SEG * M_PI_2;
+                    for (int j = 0; j <= SEG; ++j) {
+                        float theta = float(j) / SEG * M_PI_2;
+                        float x = sx * (RX - RAD + RAD * std::sin(phi) * std::cos(theta));
+                        float y = sy * (RY - RAD + RAD * std::sin(phi) * std::sin(theta));
+                        float z = sz * (RZ - RAD + RAD * std::cos(phi));
+                        glNormal3f(sx * std::sin(phi) * std::cos(theta), sy * std::sin(phi) * std::sin(theta), sz * std::cos(phi));
+                        glVertex3f(x, y, z);
+                    }
+                }
+                glEnd();
+            }
+        }
+    }
 }
 
 static void draw_cabin()
@@ -139,24 +332,77 @@ static void draw_wheels(float steer)
 
 static void draw_turret()
 {
-    // --- turret base ---
+    // --- turret base (rotating platform) ---
     glPushMatrix();
-    glScalef(0.9f, 0.25f, 0.9f);
+    glScalef(1.0f, 0.22f, 1.0f);
     draw_unit_cube();
     glPopMatrix();
 
-    // --- gun barrel ---
-
+    // --- standing platform for gunner ---
     glPushMatrix();
-    glTranslatef(0.0f, 0.0f, 0.9f);
+    glTranslatef(0.0f, -0.18f, 0.0f);
+    glScalef(0.7f, 0.08f, 0.7f);
+    glColor3f(0.3f, 0.3f, 0.3f);
+    draw_unit_cube();
+    glColor3f(1,1,1);
+    glPopMatrix();
 
-    // pitch barrel UP 45 degrees
-    glRotatef(-45.0f, 1, 0, 0);
+    // --- larger gunner shield ---
+    glPushMatrix();
+    glTranslatef(0.0f, 0.38f, 0.18f);
+    glScalef(1.2f, 0.38f, 0.12f);
+    glColor3f(0.2f, 0.5f, 0.2f);
+    draw_unit_cube();
+    glColor3f(1,1,1);
+    glPopMatrix();
 
-    glScalef(0.15f, 0.15f, 1.6f);
+    // --- gun mount (vertical support, extended to gun body) ---
+    glPushMatrix();
+    // Start at top of turret base (0.22), extend to gun body (0.47+1.0)
+    float stand_base = 0.22f;
+    float stand_top = 0.47f + 1.0f - 0.08f; // 0.08f offset for gun body thickness
+    float stand_height = stand_top - stand_base;
+    glTranslatef(0.0f, stand_base + stand_height * 0.5f, 0.0f);
+    glRotatef(-15.0f, 1, 0, 0); // tilt back 15 degrees
+    glScalef(0.28f, stand_height, 0.28f);
     draw_unit_cube();
     glPopMatrix();
 
+
+    // --- gun body connecting barrels to mount ---
+    glPushMatrix();
+    glTranslatef(0.0f, 0.47f + 1.0f, 0.35f); // position between barrels and mount
+    glScalef(0.38f, 0.16f, 0.5f);
+    glColor3f(0.25f, 0.25f, 0.25f);
+    draw_unit_cube();
+    glColor3f(1,1,1);
+    glPopMatrix();
+
+    // --- triple-barrel gun (raised 1 meter above mount) ---
+    for (int i = -1; i <= 1; ++i) {
+        glPushMatrix();
+        glTranslatef(0.18f * i, 0.47f + 1.0f, 0.0f); // raise by 1 meter
+        glRotatef(-10.0f, 1, 0, 0);
+        glScalef(0.16f, 0.16f, 1.1f);
+        draw_unit_cube();
+        glPopMatrix();
+    }
+
+    // --- prominent handles for gunner ---
+    for (int i = -1; i <= 1; i += 2) {
+        glPushMatrix();
+        glTranslatef(0.18f * i, 0.38f, 0.18f);
+        glScalef(0.07f, 0.28f, 0.07f);
+        draw_unit_cube();
+        glPopMatrix();
+    }
+
+    // --- back support bar ---
+    glPushMatrix();
+    glTranslatef(0.0f, 0.38f, -0.18f);
+    glScalef(0.5f, 0.08f, 0.07f);
+    draw_unit_cube();
+    glPopMatrix();
 }
 
 // ============================================================

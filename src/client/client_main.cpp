@@ -432,57 +432,48 @@ static void render_world_for_xr(const XrView& view, int width, int height)
     // In VR we don't render the local player's avatar/vehicle
     // (first-person HMD view will handle hands/controllers).
     if (!xr_is_session_running()) {
-        if (active_vehicle == ActiveVehicle::Drone) {
-        bool local_idle =
-            std::fabs(ctl.forward) < 0.01f &&
-            std::fabs(ctl.strafe) < 0.01f &&
-            !ctl.boost;
+        // Set up the main camera/projection ONCE for all vehicles
+        // (Assume 'cam' is already set up for the main view)
 
-        IdlePose idle{};
-        if (local_idle) {
-            idle = compute_idle_pose(g_local_player_id, SDL_GetTicks() * 0.001);
-        }
-
+        // --- Drone ---
         glPushMatrix();
-        glTranslatef(drone.x, drone.y + idle.y_offset, drone.z);
-
-        glRotatef((drone.yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
-        glRotatef(drone.pitch * 57.2958f + idle.pitch, 1, 0, 0);
-        glRotatef(drone.roll * 57.2958f + idle.roll, 0, 0, 1);
-
-        glDisable(GL_LIGHTING);
-        glUseProgram(g_drone_program);
-
-        glUniform3f(uBaseColor, 0.65f, 0.68f, 0.72f);
-        glUniform1f(uMetallic, 0.90f);
-        glUniform1f(uRoughness, 0.32f);
-
-        glUniform3f(uCameraPos, camXR.pos.x, camXR.pos.y, camXR.pos.z);
-        glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
-        glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
-
-        upload_fixed_matrices();
-        draw_drone_mesh();
-
-        glUseProgram(0);
-        glEnable(GL_LIGHTING);
+        {
+            bool local_idle =
+                std::fabs(ctl.forward) < 0.01f &&
+                std::fabs(ctl.strafe) < 0.01f &&
+                !ctl.boost;
+            IdlePose idle{};
+            if (local_idle) {
+                idle = compute_idle_pose(g_local_player_id, SDL_GetTicks() * 0.001);
+            }
+            glTranslatef(drone.x, drone.y + idle.y_offset, drone.z);
+            glRotatef((drone.yaw + idle.yaw_offset * 0.01745f) * 57.2958f, 0, 1, 0);
+            glRotatef(drone.pitch * 57.2958f + idle.pitch, 1, 0, 0);
+            glRotatef(drone.roll * 57.2958f + idle.roll, 0, 0, 1);
+            glDisable(GL_LIGHTING);
+            glUseProgram(g_drone_program);
+            glUniform3f(uBaseColor, 0.65f, 0.68f, 0.72f);
+            glUniform1f(uMetallic, 0.90f);
+            glUniform1f(uRoughness, 0.32f);
+            glUniform3f(uCameraPos, camXR.pos.x, camXR.pos.y, camXR.pos.z);
+            glUniform3f(uLightDir, -0.3f, -1.0f, -0.2f);
+            glUniform3f(uLightColor, 1.0f, 0.98f, 0.92f);
+            upload_fixed_matrices();
+            draw_drone_mesh();
+            glUseProgram(0);
+            glEnable(GL_LIGHTING);
+        }
         glPopMatrix();
-        }
-        else if (active_vehicle == ActiveVehicle::Warthog) {
-            render_warthog(warthog);
-        }
-else if (active_vehicle == ActiveVehicle::Walker) {
-    // Apply orthographic camera
-    apply_walker_ortho_camera();
 
-    render_walker(walker);
+        // --- Warthog ---
+        glPushMatrix();
+        render_warthog(warthog);
+        glPopMatrix();
 
-    // Restore matrices
-    glPopMatrix(); // MODELVIEW
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-}
+        // --- Walker ---
+        glPushMatrix();
+        render_walker(walker);
+        glPopMatrix();
 
     }
 
