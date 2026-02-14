@@ -1477,13 +1477,38 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
 
 
 
+
     void draw_terrain(float cam_x, float cam_z, float time) {
 
-    glUseProgram(g_water_reflect_program);
+    glUseProgram(get_water_reflect_program());
     glUniform1f(uWaterTime, time);
-        if (g_grass_tex == 0) {
-            g_grass_tex = generate_grass_texture(256);
-        }
+
+    // --- Upload camera and matrix uniforms ---
+    // Get OpenGL matrices (column-major)
+    float model[16], view[16], proj[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX, view); // OpenGL's MODELVIEW is view * model
+    glGetFloatv(GL_PROJECTION_MATRIX, proj);
+    // For terrain, model is identity
+    for (int i = 0; i < 16; ++i) model[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    glUniformMatrix4fv(uWaterModel, 1, GL_FALSE, model);
+    glUniformMatrix4fv(uWaterView, 1, GL_FALSE, view);
+    glUniformMatrix4fv(uWaterProj, 1, GL_FALSE, proj);
+
+    // Camera position (extract from view matrix or pass as argument)
+    // Here, assume cam_x, cam_z are camera XZ, Y is fixed (for demo)
+    // In real code, pass camera Y as argument
+    glUniform3f(uWaterCameraPos, cam_x, 32.0f, cam_z); // 32.0f: typical camera height
+
+    // Sky color (simple blue, or sample from sky renderer)
+    glUniform3f(uWaterSkyColor, 0.18f, 0.36f, 0.65f);
+
+    // We'll set uIsPath=1.0 for path, 0.0 otherwise per draw call
+    if (g_grass_tex == 0) {
+        g_grass_tex = generate_grass_texture(256);
+    }
+
+    // Disable fixed-function lighting for custom shader
+    glDisable(GL_LIGHTING);
 
 
 
@@ -1564,7 +1589,8 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
                         }
 
                         float dist = path_distance(wx, wz);
-                        if (dist < ROAD_HALF_WIDTH)
+                        float isPath = (dist < ROAD_HALF_WIDTH) ? 1.0f : 0.0f;
+                        if (isPath > 0.5f)
                         {
                             float t = (ROAD_HALF_WIDTH - dist) / ROAD_HALF_WIDTH;
                             wy -= t * 1.2f;   // slightly deeper for vehicles
@@ -1580,6 +1606,10 @@ static void draw_trees_near(float anchor_x, float anchor_z, float time) {
                         float slope = terrain_slope(ny);
                         TerrainZone zone = classify_zone(wy, slope, dist);
 
+                        // Set the path mask and reflectivity uniforms for the shader
+                        glUniform1f(glGetUniformLocation(get_water_reflect_program(), "uIsPath"), isPath);
+                        float reflectivity = isPath > 0.5f ? 0.95f : 0.0f;
+                        glUniform1f(glGetUniformLocation(get_water_reflect_program(), "uReflectivity"), reflectivity);
                         set_zone_color(zone, wy, slope, wx, wz);
 
                         float dirt_blend = smooth_zone(

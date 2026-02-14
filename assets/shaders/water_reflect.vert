@@ -10,6 +10,7 @@ out vec3 vViewDir;
 uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProj;
+uniform float uIsPath;
 uniform vec3 uCameraPos;
 
 void main()
@@ -18,5 +19,6 @@ void main()
     vWorldPos = worldPos.xyz;
     vNormal = mat3(uModel) * aNormal;
     vViewDir = normalize(uCameraPos - vWorldPos);
+    // No per-vertex path mask, use uniform
     gl_Position = uProj * uView * worldPos;
 }

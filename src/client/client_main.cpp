@@ -1,5 +1,5 @@
 ﻿#include "render/render_stats.hpp"
-#include "render/render_stats.hpp"
+#include "render/water_reflect_shader.hpp"
 #include <atomic>
 std::atomic<int> g_draw_call_count{0};
 #define SDL_MAIN_HANDLED
@@ -1281,20 +1281,22 @@ if (g_run_mode == RunMode::VR) {
             // GAME INPUT (AFTER NAME ENTRY)
             // --------------------------------------------------
 
-            if (e.type == SDL_KEYDOWN) {
 
+            if (e.type == SDL_KEYDOWN) {
                 if (e.key.keysym.sym == SDLK_1) {
                     active_vehicle = ActiveVehicle::Drone;
                 }
-
                 if (e.key.keysym.sym == SDLK_2) {
                     active_vehicle = ActiveVehicle::Warthog;
                 }
-
                 if (e.key.keysym.sym == SDLK_3) {
                     active_vehicle = ActiveVehicle::Walker;
                 }
-
+                // Hot-reload water reflect shader on F5
+                if (e.key.keysym.sym == SDLK_F5) {
+                    reload_water_reflect_shader();
+                    printf("[hotreload] Water reflect shader reloaded!\n");
+                }
             }
 
             if (e.type == SDL_MOUSEMOTION)

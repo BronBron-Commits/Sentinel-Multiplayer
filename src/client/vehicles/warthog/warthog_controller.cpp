@@ -162,7 +162,7 @@ void warthog_update(
     // Jump and gravity
     // --------------------------------------------------------
     constexpr float GRAVITY = 32.0f;
-    constexpr float JUMP_VELOCITY = 17.15f;
+    constexpr float JUMP_VELOCITY = 24.0f; // Increased for higher jumps
     float ground = sample_ground(w) + GROUND_OFFSET;
 
     // Handle jump (spacebar = ctl.fire)

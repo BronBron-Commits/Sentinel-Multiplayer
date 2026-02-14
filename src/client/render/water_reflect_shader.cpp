@@ -1,53 +1,83 @@
-// water_reflect_shader.cpp
-#include "water_reflect_shader.hpp"  // your header
+#include "water_reflect_shader.hpp"
 #include <glad/glad.h>
-#include <cstdio> // for printf
+#include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
 
-// Global variables
 unsigned int g_water_reflect_program = 0;
-GLint uWaterModel = -1;
-GLint uWaterView = -1;
-GLint uWaterProj = -1;
-GLint uWaterCameraPos = -1;
-GLint uWaterSkyColor = -1;
-GLint uWaterReflectivity = -1;
-GLint uWaterTime = -1;
+int uWaterModel = -1;
+int uWaterView = -1;
+int uWaterProj = -1;
+int uWaterCameraPos = -1;
+int uWaterSkyColor = -1;
+int uWaterReflectivity = -1;
+int uWaterTime = -1;
 
-// Forward declaration of your shader linking function
-extern unsigned int link_program(const char* vs_source, const char* fs_source);
+static std::string load_text_file(const char* path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return {};
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+static GLuint compile_shader(GLenum type, const char* src, const char* name) {
+    GLuint s = glCreateShader(type);
+    glShaderSource(s, 1, &src, nullptr);
+    glCompileShader(s);
+    GLint ok = 0;
+    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[1024];
+        glGetShaderInfoLog(s, sizeof(log), nullptr, log);
+        #ifndef NDEBUG
+        printf("[water_reflect_shader] %s compile error:\n%s\n", name, log);
+        #endif
+        glDeleteShader(s);
+        return 0;
+    }
+    return s;
+}
+
+static GLuint link_program(GLuint vs, GLuint fs) {
+    GLuint p = glCreateProgram();
+    glAttachShader(p, vs);
+    glAttachShader(p, fs);
+    glLinkProgram(p);
+    GLint ok = 0;
+    glGetProgramiv(p, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[1024];
+        glGetProgramInfoLog(p, sizeof(log), nullptr, log);
+        #ifndef NDEBUG
+        printf("[water_reflect_shader] link error:\n%s\n", log);
+        #endif
+        glDeleteProgram(p);
+        return 0;
+    }
+    glDetachShader(p, vs);
+    glDetachShader(p, fs);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return p;
+}
+
+void reload_water_reflect_shader() {
+    if (g_water_reflect_program) {
+        glDeleteProgram(g_water_reflect_program);
+        g_water_reflect_program = 0;
+    }
+    init_water_reflect_shader();
+}
 
 void init_water_reflect_shader() {
-    // Example vertex shader source
-    const char* vs = R"(
-        #version 330 core
-        layout(location = 0) in vec3 aPos;
-        uniform mat4 uModel;
-        uniform mat4 uView;
-        uniform mat4 uProj;
-        void main() {
-            gl_Position = uProj * uView * uModel * vec4(aPos, 1.0);
-        }
-    )";
-
-    // Example fragment shader source
-    const char* fs = R"(
-        #version 330 core
-        out vec4 FragColor;
-        uniform vec3 uSkyColor;
-        uniform float uReflectivity;
-        uniform float uTime;
-        void main() {
-            FragColor = vec4(uSkyColor * uReflectivity, 1.0);
-        }
-    )";
-
+    std::string vsrc = load_text_file("assets/shaders/water_reflect.vert");
+    std::string fsrc = load_text_file("assets/shaders/water_reflect.frag");
+    GLuint vs = compile_shader(GL_VERTEX_SHADER, vsrc.c_str(), "water_reflect.vert");
+    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fsrc.c_str(), "water_reflect.frag");
     g_water_reflect_program = link_program(vs, fs);
-    if (!g_water_reflect_program) {
-        printf("[water_reflect_shader] failed to link shader program\n");
-        return;
-    }
-
-    // Get uniform locations
+    if (!g_water_reflect_program) return;
     uWaterModel = glGetUniformLocation(g_water_reflect_program, "uModel");
     uWaterView = glGetUniformLocation(g_water_reflect_program, "uView");
     uWaterProj = glGetUniformLocation(g_water_reflect_program, "uProj");
@@ -55,6 +85,18 @@ void init_water_reflect_shader() {
     uWaterSkyColor = glGetUniformLocation(g_water_reflect_program, "uSkyColor");
     uWaterReflectivity = glGetUniformLocation(g_water_reflect_program, "uReflectivity");
     uWaterTime = glGetUniformLocation(g_water_reflect_program, "uTime");
-
+    #ifndef NDEBUG
+    if (uWaterTime == -1) {
+        printf("[water_reflect_shader] WARNING: uTime uniform not found in shader!\n");
+    }
+    #endif
+    #ifndef NDEBUG
+    #ifndef NDEBUG
     printf("[water_reflect_shader] initialized (program=%u)\n", g_water_reflect_program);
+    #endif
+    #endif
+}
+
+unsigned int get_water_reflect_program() {
+    return g_water_reflect_program;
 }

@@ -36,11 +36,11 @@ void main()
     // Reflection vector
     vec3 R = reflect(-V, N);
     float skyAmount = clamp(R.y, 0.0, 1.0);
-    vec3 waterBase = vec3(1.0, 0.0, 0.0); // BRIGHT RED for debug
+    vec3 waterBase = vec3(0.18, 0.55, 0.95); // blue path color
 
     // Strong fresnel for sharp edge reflections
-    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 8.0);
-    float reflectStrength = mix(uReflectivity, 1.0, fresnel * 1.5);
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.0); // Lower power for stronger fresnel
+    float reflectStrength = mix(max(uReflectivity, 0.7), 1.0, fresnel * 2.0); // Higher base reflectivity, stronger fresnel
 
     // Much sharper and brighter highlight (simulate sun)
     float sun = pow(clamp(dot(R, vec3(0.4, 1.0, 0.3)), 0.0, 1.0), 256.0);
@@ -57,6 +57,10 @@ void main()
     float sparkle = hash(floor(vWorldPos.xz * 12.0) + uTime * sparkleSpeed);
     float sparkleMask = smoothstep(1.0 - sparkleSize, 1.0, sparkle) * step(fract(uTime * 0.7 + vWorldPos.x * 0.3 + vWorldPos.z * 0.5), sparkleDensity);
     color += vec3(2.5, 2.3, 1.8) * sparkleMask;
+
+    // Blend with original terrain color if not path
+    vec3 terrainColor = vec3(0.42, 0.36, 0.28); // fallback terrain color
+    color = mix(terrainColor, color, uIsPath);
 
     FragColor = vec4(color, 1.0);
 }
