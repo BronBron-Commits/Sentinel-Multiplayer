@@ -80,96 +80,49 @@ void warthog_update(
     float dt
 )
 {
-    // --------------------------------------------------------
-    // Steering (speed sensitive)
-    // --------------------------------------------------------
-    float speed_factor =
-        1.0f - std::clamp(std::abs(w.speed) / MAX_SPEED, 0.0f, 0.7f);
-
-    float target_steer =
-        -ctl.strafe * MAX_STEER_RAD * speed_factor;
-
-    w.steer_angle +=
-        (target_steer - w.steer_angle) * STEER_SPEED * dt;
-
-    // --------------------------------------------------------
-    // Engine / brake
-    // --------------------------------------------------------
-    float desired_speed = ctl.forward * MAX_SPEED;
-    float accel =
-        (std::abs(desired_speed) < std::abs(w.speed)) ? BRAKE : ACCEL;
-
-    w.speed += (desired_speed - w.speed) * accel * dt;
-
-    // --------------------------------------------------------
-    // Bicycle yaw
-    // --------------------------------------------------------
-    if (std::abs(w.speed) > 0.1f)
-    {
-        float yaw_rate =
-            (w.speed / WHEEL_BASE) * std::tan(w.steer_angle);
+    // --- Walker-style camera-relative WASD movement and facing ---
+    float move_fwd = ctl.forward;
+    float move_side = ctl.strafe;
+    // Classic vehicle controls: W/S = forward/back, A/D = turn wheels
+    // Mouse look still orbits camera, but A/D sets steering
+    float speed = move_fwd * MAX_SPEED;
+    // Steering (A/D)
+    float target_steer = -move_side * MAX_STEER_RAD;
+    w.steer_angle += (target_steer - w.steer_angle) * STEER_SPEED * dt;
+    // Update yaw based on steering and speed
+    if (std::abs(speed) > 0.01f) {
+        float yaw_rate = (speed / WHEEL_BASE) * std::tan(w.steer_angle);
         w.yaw += yaw_rate * dt;
     }
-
-    // --------------------------------------------------------
-    // Forward vector
-    // --------------------------------------------------------
+    // Move forward in current yaw
     float fx = std::sin(w.yaw);
     float fz = std::cos(w.yaw);
+    w.x += fx * speed * dt;
+    w.z += fz * speed * dt;
+    // Model facing matches yaw
+    w.visual_yaw = w.yaw;
 
-    // --------------------------------------------------------
-    // Target velocity
-    // --------------------------------------------------------
-    float target_vx = fx * w.speed;
-    float target_vz = fz * w.speed;
+    // Only mouse look (camera orbit) rotates the model, not A/D (strafe)
+    // Always face the camera/orbit direction, just like the walker
+    float desired_yaw = w.yaw + warthog_cam_orbit;
+    // Wrap to [0, 2pi)
+    if (desired_yaw < 0.0f) desired_yaw += 6.2831853f;
+    if (desired_yaw > 6.2831853f) desired_yaw -= 6.2831853f;
+    float angle_diff = desired_yaw - w.visual_yaw;
+    if (angle_diff > 3.1415926f) angle_diff -= 6.2831853f;
+    if (angle_diff < -3.1415926f) angle_diff += 6.2831853f;
+    w.visual_yaw += angle_diff * (1.0f - std::exp(-dt * 12.0f));
+    if (w.visual_yaw > 6.2831853f) w.visual_yaw -= 6.2831853f;
+    if (w.visual_yaw < 0.0f)      w.visual_yaw += 6.2831853f;
+    w.yaw = w.visual_yaw;
 
-    w.vx += (target_vx - w.vx) * BASE_GRIP * dt;
-    w.vz += (target_vz - w.vz) * BASE_GRIP * dt;
-
-    // --------------------------------------------------------
-    // Lateral stabilization
-    // --------------------------------------------------------
-    float side_v = (-fz * w.vx + fx * w.vz);
-
-    // Rear tires (strong)
-    w.vx -= (-fz) * side_v * SIDE_GRIP_REAR * dt;
-    w.vz -= (fx)*side_v * SIDE_GRIP_REAR * dt;
-
-    // Front tires (looser)
-    w.vx -= (-fz) * side_v * SIDE_GRIP_FRONT * dt * 0.5f;
-    w.vz -= (fx)*side_v * SIDE_GRIP_FRONT * dt * 0.5f;
-
-    // --------------------------------------------------------
-    // Energy clamp
-    // --------------------------------------------------------
-    float vel_len = std::sqrt(w.vx * w.vx + w.vz * w.vz);
-    float max_len = std::abs(w.speed);
-
-    if (vel_len > max_len && vel_len > 0.0001f)
-    {
-        float s = max_len / vel_len;
-        w.vx *= s;
-        w.vz *= s;
-    }
-
-    // --------------------------------------------------------
-    // Integrate
-    // --------------------------------------------------------
-    w.x += w.vx * dt;
-    w.z += w.vz * dt;
-
-    // --------------------------------------------------------
-    // Jump and gravity
-    // --------------------------------------------------------
+    // --- Walker-style jump and gravity ---
     constexpr float GRAVITY = 32.0f;
-    constexpr float JUMP_VELOCITY = 24.0f; // Increased for higher jumps
+    constexpr float JUMP_VELOCITY = 24.0f;
     float ground = sample_ground(w) + GROUND_OFFSET;
-
-    // Handle jump (spacebar = ctl.fire)
     static bool prev_jump = false;
     bool jump_pressed = ctl.fire;
     if (jump_pressed && !prev_jump) {
-        // Allow double jump: jump_count < 2
         if (w.on_ground || w.jump_count < 2) {
             w.vy = JUMP_VELOCITY;
             w.jump_count++;
@@ -177,12 +130,8 @@ void warthog_update(
         }
     }
     prev_jump = jump_pressed;
-
-    // Apply gravity
     w.vy -= GRAVITY * dt;
     w.y += w.vy * dt;
-
-    // Ground collision
     if (w.y <= ground) {
         w.y = ground;
         w.vy = 0.0f;

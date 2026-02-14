@@ -12,6 +12,7 @@ struct WarthogState
     float z = 0.0f;
 
     float yaw = 0.0f;
+    float visual_yaw = 0.0f; // for smooth model turning
     float speed = 0.0f;
     float steer_angle = 0.0f;
 

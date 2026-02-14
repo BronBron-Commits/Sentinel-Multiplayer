@@ -185,7 +185,8 @@ static void render_warthog_internal(
 
     glPushMatrix();
     glTranslatef(x, y, z);
-    glRotatef(yaw * 57.2958f, 0, 1, 0);
+    // Use visual_yaw for smooth facing, flip sign to match steering
+    glRotatef((yaw) * 57.2958f, 0, 1, 0);
     glScalef(SCALE, SCALE, SCALE);
 
     draw_chassis();
