@@ -1311,9 +1311,8 @@ if (g_run_mode == RunMode::VR) {
                     (float)e.motion.yrel
                 );
 
-                // Warthog orbit is ADDITIVE, not exclusive
-                if (active_vehicle == ActiveVehicle::Warthog &&
-                    warthog_orbit_active)
+                // Warthog orbit is always active: mouse look always rotates camera
+                if (active_vehicle == ActiveVehicle::Warthog)
                 {
                     constexpr float ORBIT_SENS = 0.0045f;
                     warthog_cam_orbit -= e.motion.xrel * ORBIT_SENS;

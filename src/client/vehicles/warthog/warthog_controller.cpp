@@ -21,7 +21,7 @@ constexpr float ACCEL = 24.0f;
 constexpr float BRAKE = 18.0f;
 
 constexpr float MAX_STEER_RAD = 0.45f;
-constexpr float STEER_SPEED = 6.0f;
+constexpr float STEER_SPEED = 2.2f; // Slower steering for Halo 3 feel
 
 constexpr float WHEEL_BASE = 3.2f;
 
@@ -84,7 +84,7 @@ void warthog_update(
     float move_fwd = ctl.forward;
     float move_side = ctl.strafe;
     // Classic vehicle controls: W/S = forward/back, A/D = turn wheels
-    // Mouse look still orbits camera, but A/D sets steering
+    // Mouse look (warthog_cam_orbit) only rotates the camera, not the vehicle's yaw or movement
     float speed = move_fwd * MAX_SPEED;
     // Steering (A/D)
     float target_steer = -move_side * MAX_STEER_RAD;
@@ -94,7 +94,7 @@ void warthog_update(
         float yaw_rate = (speed / WHEEL_BASE) * std::tan(w.steer_angle);
         w.yaw += yaw_rate * dt;
     }
-    // Move forward in current yaw
+    // Move forward in current yaw (not camera-relative)
     float fx = std::sin(w.yaw);
     float fz = std::cos(w.yaw);
     w.x += fx * speed * dt;
@@ -102,19 +102,8 @@ void warthog_update(
     // Model facing matches yaw
     w.visual_yaw = w.yaw;
 
-    // Only mouse look (camera orbit) rotates the model, not A/D (strafe)
-    // Always face the camera/orbit direction, just like the walker
-    float desired_yaw = w.yaw + warthog_cam_orbit;
-    // Wrap to [0, 2pi)
-    if (desired_yaw < 0.0f) desired_yaw += 6.2831853f;
-    if (desired_yaw > 6.2831853f) desired_yaw -= 6.2831853f;
-    float angle_diff = desired_yaw - w.visual_yaw;
-    if (angle_diff > 3.1415926f) angle_diff -= 6.2831853f;
-    if (angle_diff < -3.1415926f) angle_diff += 6.2831853f;
-    w.visual_yaw += angle_diff * (1.0f - std::exp(-dt * 12.0f));
-    if (w.visual_yaw > 6.2831853f) w.visual_yaw -= 6.2831853f;
-    if (w.visual_yaw < 0.0f)      w.visual_yaw += 6.2831853f;
-    w.yaw = w.visual_yaw;
+    // visual_yaw and yaw are set by steering only; camera orbit does not affect vehicle facing
+    w.visual_yaw = w.yaw;
 
     // --- Walker-style jump and gravity ---
     constexpr float GRAVITY = 32.0f;
@@ -155,12 +144,13 @@ void warthog_update_camera(
     float dt
 )
 {
-    // Smoothly recenter when orbit not active
+    // Smoothly recenter when orbit not active (make lazier for Halo 3 feel)
     if (!warthog_orbit_active)
     {
-        warthog_cam_orbit *= std::exp(-dt * 6.0f);
+        warthog_cam_orbit *= std::exp(-dt * 2.2f); // Slower recenter
     }
 
+    // Camera orbits freely around warthog using warthog_cam_orbit
     float cam_yaw = w.yaw + warthog_cam_orbit;
 
     float fx = std::sin(cam_yaw);
