@@ -169,7 +169,8 @@ void warthog_update(
     static bool prev_jump = false;
     bool jump_pressed = ctl.fire;
     if (jump_pressed && !prev_jump) {
-        if (w.on_ground || w.jump_count < 1) {
+        // Allow double jump: jump_count < 2
+        if (w.on_ground || w.jump_count < 2) {
             w.vy = JUMP_VELOCITY;
             w.jump_count++;
             w.on_ground = false;
