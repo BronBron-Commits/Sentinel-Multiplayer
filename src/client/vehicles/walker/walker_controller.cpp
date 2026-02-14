@@ -59,8 +59,6 @@ void walker_update(
     float dt
 )
 {
-    // Tank controls: forward/backward = move, left/right = rotate
-
     float move_fwd = ctl.forward;
     float move_side = ctl.strafe;
     // WASD directions are relative to camera (orbit)
@@ -76,6 +74,27 @@ void walker_update(
     w.x += (fwd_x * move_fwd + right_x * move_side) * MOVE_SPEED * dt;
     w.z += (fwd_z * move_fwd + right_z * move_side) * MOVE_SPEED * dt;
 
+    // Turn walker to face direction of movement (relative to camera/orbit), or face camera when idle
+    float desired_yaw;
+    if (std::fabs(move_fwd) > 0.01f || std::fabs(move_side) > 0.01f) {
+        float move_angle = std::atan2(move_side, move_fwd);
+        desired_yaw = cam_yaw + move_angle;
+    } else {
+        // Idle: face camera/orbit direction
+        desired_yaw = cam_yaw;
+    }
+    // Wrap to [0, 2pi)
+    if (desired_yaw < 0.0f) desired_yaw += 6.2831853f;
+    if (desired_yaw > 6.2831853f) desired_yaw -= 6.2831853f;
+    float angle_diff = desired_yaw - w.visual_yaw;
+    // Wrap to [-pi, pi]
+    if (angle_diff > 3.1415926f) angle_diff -= 6.2831853f;
+    if (angle_diff < -3.1415926f) angle_diff += 6.2831853f;
+    w.visual_yaw += angle_diff * (1.0f - std::exp(-dt * 12.0f)); // lag factor
+    // Wrap visual_yaw
+    if (w.visual_yaw > 6.2831853f) w.visual_yaw -= 6.2831853f;
+    if (w.visual_yaw < 0.0f)      w.visual_yaw += 6.2831853f;
+
     // Grounding
     w.y = terrain_height(w.x, w.z) + FOOT_OFFSET;
 
@@ -87,8 +106,6 @@ void walker_update(
             w.walk_phase -= 6.2831853f;
     }
 
-    // Model facing matches yaw
-    w.visual_yaw = w.yaw;
 }
 
 // ------------------------------------------------------------

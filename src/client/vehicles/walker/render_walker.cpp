@@ -69,7 +69,7 @@ void render_walker(const WalkerState& w)
 
     // World transform (already grounded by controller)
     glTranslatef(w.x, w.y, w.z);
-    glRotatef(w.visual_yaw * 57.2958f, 0, 1, 0); // Face movement direction exactly
+    glRotatef((-w.visual_yaw + 1.5708f) * 57.2958f, 0, 1, 0); // Add 90 degree offset for correct spawn facing
 
     // Overall scale (human-sized but readable)
     glScalef(5.0f, 5.0f, 5.0f);
